@@ -1,0 +1,248 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>MOTO STUNT</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/galmuri/dist/galmuri.css" />
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    :root {
+      --cyan: #5ad1ff; --yellow: #ffd54a; --red: #ff5a5a; --green: #7CFFB2;
+      --ink: #eaf2ff; --dim: #8aa0c0; --panel: rgba(8,12,22,.72);
+      --font: "Galmuri11", "DungGeunMo", monospace;
+    }
+    html, body { width: 100%; height: 100%; overflow: hidden; background: #06060c; }
+    #app { position: fixed; inset: 0; }
+    canvas { display: block; image-rendering: pixelated; }
+
+    #hud {
+      position: fixed; inset: 0; pointer-events: none;
+      font-family: var(--font); color: var(--ink);
+      -webkit-font-smoothing: none; font-smooth: never; text-rendering: optimizeSpeed;
+    }
+
+    /* per-player panels */
+    .side { position: absolute; top: 18px; width: 46%; }
+    .side.left  { left: 18px; }
+    .side.right { right: 18px; text-align: right; display: none; }
+    #hud.split .side.right, #hud.online .side.right { display: block; }
+
+    .pid { font-size: 11px; color: var(--cyan); letter-spacing: .05em; }
+    .spd { font-size: 11px; color: var(--dim); margin-top: 4px; }
+    .spd b { font-size: 33px; color: var(--ink); }
+    .spd .u { font-size: 11px; color: var(--dim); }
+
+    /* chunky pixel progress bar */
+    .prog {
+      margin-top: 8px; height: 14px; width: 100%;
+      background: #0c1424; border: 3px solid var(--cyan);
+      box-shadow: 0 0 0 3px #06060c; position: relative; overflow: hidden;
+    }
+    .side.right .prog { direction: rtl; }
+    .prog .fill {
+      height: 100%; width: 0%;
+      background: var(--cyan);
+      background-image: repeating-linear-gradient(90deg, rgba(0,0,0,.35) 0 2px, transparent 2px 9px);
+      image-rendering: pixelated;
+    }
+    .tags { margin-top: 7px; font-size: 11px; letter-spacing: .03em; min-height: 14px; line-height: 1.5; }
+    .tags .wheelie { color: var(--yellow); }
+    .tags .invinc  { color: var(--cyan); }
+    .tags .crashed { color: var(--red); }
+
+    #vDivider { position: absolute; top: 0; bottom: 0; left: 50%; width: 4px;
+      background: repeating-linear-gradient(180deg, var(--cyan) 0 6px, transparent 6px 12px);
+      opacity: .5; display: none; }
+    #hud.split #vDivider { display: block; }
+
+    /* banners */
+    .banner { position: absolute; top: 40%; left: 50%; transform: translate(-50%,-50%);
+      text-align: center; letter-spacing: .04em; opacity: 0; transition: opacity .12s; }
+    .banner.show { opacity: 1; }
+    .banner .big { font-size: 44px; }
+    .banner .sub { font-size: 14px; color: var(--dim); margin-top: 12px; }
+    #finishBanner .big { color: var(--yellow); }
+
+    .controls-help { position: absolute; bottom: 16px; left: 50%; transform: translateX(-50%);
+      font-size: 11px; color: var(--dim); letter-spacing: .02em; text-align: center; }
+
+    /* near-flip warning (shows at ~80% wheelie) */
+    .warn { position: absolute; top: 23%; transform: translateX(-50%); z-index: 16;
+      font-family: var(--font); color: #fff; background: var(--red);
+      font-size: 17px; padding: 7px 13px; letter-spacing: .08em; white-space: nowrap;
+      box-shadow: 0 0 0 3px #06060c, 0 0 0 6px var(--red);
+      display: none; animation: warnblink .42s steps(2, start) infinite; }
+    .warn.on { display: block; }
+    #p1warn { left: 50%; }
+    #p2warn { left: 75%; }
+    #hud.split #p1warn { left: 25%; }
+    @keyframes warnblink { 50% { opacity: .22; } }
+
+    /* pixel button + tags */
+    #motionStart {
+      position: fixed; bottom: 16px; right: 18px; z-index: 20; pointer-events: auto; cursor: pointer;
+      font-family: var(--font); font-size: 12px; color: #04121c;
+      background: var(--cyan); border: 0; padding: 10px 14px;
+      box-shadow: 0 0 0 3px #06060c, 0 0 0 6px var(--cyan); letter-spacing: .03em;
+      image-rendering: pixelated;
+    }
+    #motionStart:hover { background: #9fe6ff; }
+    #motionStart.busy { opacity: .55; pointer-events: none; }
+    #modeTag { position: fixed; bottom: 18px; left: 18px; z-index: 20;
+      font-family: var(--font); font-size: 11px; color: var(--dim); }
+    #modeTag b { color: var(--yellow); }
+
+    /* webcam HUD */
+    #camWrap { position: fixed; bottom: 12px; left: 50%; transform: translateX(-50%); z-index: 15;
+      width: 240px; height: 168px; overflow: hidden; background: #05070d;
+      border: 3px solid var(--cyan); box-shadow: 0 0 0 3px #06060c; display: none; }
+    #camWrap.on { display: block; }
+    #camFeed, #camOverlay { position: absolute; inset: 0; width: 100%; height: 100%; transform: scaleX(-1); }
+    #camFeed { object-fit: cover; }
+    #camDivider { position: absolute; top: 0; bottom: 0; left: 50%; width: 2px;
+      background: repeating-linear-gradient(180deg, #fff 0 4px, transparent 4px 8px); opacity: .5; display: none; }
+    #camWrap.split #camDivider { display: block; }
+
+    #loading { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
+      color: var(--cyan); font-family: var(--font); font-size: 12px; letter-spacing: .1em; background: #06060c; }
+
+    /* ---- menu / lobby ---- */
+    #menu { position: fixed; inset: 0; z-index: 50; display: flex; flex-direction: column;
+      align-items: center; justify-content: center; gap: 18px;
+      background: rgba(4,6,12,.84); font-family: var(--font); color: var(--ink); }
+    #menu.hidden { display: none; }
+    .m-title { font-size: 38px; color: var(--cyan); letter-spacing: .06em; margin-bottom: 6px; text-shadow: 4px 4px 0 #06283a; }
+    .m-sub { font-size: 11px; color: var(--dim); margin-top: -10px; margin-bottom: 14px; letter-spacing: .1em; }
+    .m-screen { display: flex; flex-direction: column; align-items: center; gap: 12px; }
+    .m-screen[hidden] { display: none; }
+    .mbtn { font-family: var(--font); font-size: 14px; color: #04121c; background: var(--cyan);
+      border: 0; padding: 13px 20px; min-width: 230px; cursor: pointer; letter-spacing: .03em;
+      box-shadow: 0 0 0 3px #06060c, 0 0 0 6px var(--cyan); }
+    .mbtn:hover { background: #9fe6ff; }
+    .mbtn.ghost { background: transparent; color: var(--cyan); box-shadow: 0 0 0 3px var(--cyan); }
+    .mbtn.ghost:hover { background: rgba(90,209,255,.15); }
+    .m-row { display: flex; gap: 8px; align-items: center; }
+    #joinCode { font-family: var(--font); font-size: 18px; width: 140px; text-align: center; text-transform: uppercase;
+      background: #0c1424; color: var(--ink); border: 3px solid var(--cyan); padding: 11px; letter-spacing: .12em; }
+    .m-msg { font-size: 12px; color: var(--yellow); min-height: 16px; text-align: center; max-width: 320px; }
+    .m-code { font-size: 13px; color: var(--dim); text-align: center; }
+    .m-code b { font-size: 32px; color: var(--yellow); letter-spacing: .2em; display: block; margin-top: 6px; }
+    .m-players { display: flex; gap: 14px; margin: 4px 0; }
+    .pcard { background: #0c1424; border: 3px solid var(--dim); padding: 12px 16px; font-size: 13px; min-width: 120px; text-align: center; }
+    .pcard.p1 { color: #ff6a55; } .pcard.p2 { color: #6aa8ff; }
+    .pcard .rdy { display: block; margin-top: 8px; font-size: 11px; color: var(--dim); }
+    .pcard.ready { border-color: var(--green); }
+    .pcard.ready .rdy { color: var(--green); }
+    .m-result { font-size: 40px; margin-bottom: 6px; }
+    .m-result.win { color: var(--yellow); } .m-result.lose { color: var(--red); }
+
+    #countdown { position: fixed; inset: 0; z-index: 55; display: none; align-items: center; justify-content: center;
+      font-family: var(--font); font-size: 110px; color: #fff; text-shadow: 5px 5px 0 var(--cyan); pointer-events: none; }
+    #countdown.show { display: flex; }
+
+    /* deathmatch HUD */
+    #dmHud { position: absolute; top: 18px; left: 50%; transform: translateX(-50%); text-align: center; display: none; }
+    #hud.dm #dmHud { display: block; }
+    #hud.dm .side, #hud.dm #vDivider, #hud.dm #finishBanner { display: none; }
+    .dm-survive { font-size: 12px; color: var(--dim); letter-spacing: .08em; }
+    .dm-survive b { font-size: 28px; color: var(--cyan); }
+    #dmBanner .big { color: var(--red); }
+    #dmBanner.win .big { color: var(--yellow); }
+  </style>
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+    }
+  }
+  </script>
+</head>
+<body>
+  <div id="app"></div>
+
+  <div id="hud">
+    <div class="side left">
+      <div class="pid" id="p1id">PLAYER 1</div>
+      <div class="spd">SPEED <b id="p1speed">0</b> <span class="u">km/h</span></div>
+      <div class="prog"><div class="fill" id="p1fill"></div></div>
+      <div class="tags" id="p1tags"></div>
+    </div>
+    <div class="side right">
+      <div class="pid">PLAYER 2</div>
+      <div class="spd">SPEED <b id="p2speed">0</b> <span class="u">km/h</span></div>
+      <div class="prog"><div class="fill" id="p2fill"></div></div>
+      <div class="tags" id="p2tags"></div>
+    </div>
+
+    <div id="vDivider"></div>
+
+    <div class="banner" id="finishBanner"><div class="big" id="finishBig">FINISH!</div><div class="sub" id="finishSub"></div></div>
+
+    <div class="warn" id="p1warn">! WARNING ! 뒤집힘 주의</div>
+    <div class="warn" id="p2warn">! WARNING ! 뒤집힘 주의</div>
+
+    <div id="dmHud"><div class="dm-survive">SURVIVE <b id="dmTime">0.0</b>s</div></div>
+    <div class="warn" id="dmWarn">! 경계 임박 !</div>
+    <div class="banner" id="dmBanner"><div class="big" id="dmBannerBig">GAME OVER</div><div class="sub" id="dmBannerSub"></div></div>
+
+    <div class="controls-help" id="helpText">← → 조향　↑ 윌리　R 리셋　1/2 인원　M 모션</div>
+  </div>
+
+  <button id="motionStart">▶ 모션 컨트롤 시작</button>
+  <div id="modeTag">MODE <b id="modeTagVal">1P · KEYBOARD</b></div>
+
+  <div id="camWrap">
+    <video id="camFeed" autoplay playsinline muted></video>
+    <canvas id="camOverlay" width="240" height="168"></canvas>
+    <div id="camDivider"></div>
+  </div>
+
+  <div id="loading">LOADING…</div>
+
+  <!-- menu / lobby -->
+  <div id="menu" class="hidden">
+    <div class="m-title">MOTO STUNT</div>
+    <div class="m-sub">PIXEL WHEELIE RACER</div>
+
+    <div class="m-screen" data-s="main">
+      <button class="mbtn" id="btnSingle">싱글 플레이</button>
+      <button class="mbtn" id="btnLocal2">로컬 2인 (분할)</button>
+      <button class="mbtn" id="btnOnline">온라인 2인 (레이스)</button>
+      <button class="mbtn" id="btnDeathmatch">데스매치 vs AI</button>
+      <button class="mbtn" id="btnDeathmatch2">데스매치 2인 (분할)</button>
+      <button class="mbtn" id="btnDeathmatchOnline">데스매치 온라인</button>
+    </div>
+
+    <div class="m-screen" data-s="online" hidden>
+      <button class="mbtn" id="btnCreate">방 만들기</button>
+      <div class="m-row"><input id="joinCode" maxlength="5" placeholder="코드" /><button class="mbtn" id="btnJoin">참가</button></div>
+      <button class="mbtn ghost" id="btnBackMain">← 뒤로</button>
+      <div class="m-msg" id="onlineMsg"></div>
+    </div>
+
+    <div class="m-screen" data-s="lobby" hidden>
+      <div class="m-code">방 코드<b id="lobbyCode">-----</b></div>
+      <div class="m-players">
+        <div class="pcard p1" id="meCard">나<span class="rdy" id="meRdy">대기 중</span></div>
+        <div class="pcard p2" id="oppCard">상대<span class="rdy" id="oppRdy">없음</span></div>
+      </div>
+      <button class="mbtn" id="btnReady">준비</button>
+      <button class="mbtn ghost" id="btnLeave">나가기</button>
+      <div class="m-msg" id="lobbyMsg"></div>
+    </div>
+
+    <div class="m-screen" data-s="result" hidden>
+      <div class="m-result" id="resultText">-</div>
+      <button class="mbtn" id="btnRematch">다시</button>
+      <button class="mbtn ghost" id="btnToMenu">메뉴로</button>
+    </div>
+  </div>
+
+  <div id="countdown"></div>
+
+  <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+  <script type="module" src="./src/main.js"></script>
+</body>
+</html>
