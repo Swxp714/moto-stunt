@@ -633,7 +633,7 @@ function createArenaWorld(riderDefs) {
     S.alive = riders[0].alive;
     S.nearEdge = riders[0].alive && Math.hypot(riders[0].x, riders[0].z) > arena.radius * 0.8;
 
-    for (const r of riders) if (r.alive && r.pitch > CFG.maxPitch * 0.6) spawnSpark(r.x + (Math.random() - 0.5) * 0.6, 0.25, r.z + (Math.random() - 0.5) * 0.6);
+    for (const r of riders) if (r.alive && r.pitch > CFG.maxPitch * 0.35) { spawnSpark(r.x + (Math.random() - 0.5) * 0.6, 0.25, r.z + (Math.random() - 0.5) * 0.6); spawnSpark(r.x + (Math.random() - 0.5) * 0.6, 0.25, r.z + (Math.random() - 0.5) * 0.6); }
     updateExplosion(dt); updateSparks(dt); updateFw(dt);
     positionAll(dt);
   }
