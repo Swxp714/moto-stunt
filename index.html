@@ -224,10 +224,11 @@
 
     <div class="m-screen" data-s="lobby" hidden>
       <div class="m-code">방 코드<b id="lobbyCode">-----</b></div>
-      <div class="m-players">
+      <div class="m-players" id="raceCards">
         <div class="pcard p1" id="meCard">나<span class="rdy" id="meRdy">대기 중</span></div>
         <div class="pcard p2" id="oppCard">상대<span class="rdy" id="oppRdy">없음</span></div>
       </div>
+      <div class="m-players" id="lobbyPlayers" style="display:none; flex-wrap:wrap; max-width:520px; justify-content:center;"></div>
       <button class="mbtn" id="btnReady">준비</button>
       <button class="mbtn ghost" id="btnLeave">나가기</button>
       <div class="m-msg" id="lobbyMsg"></div>
