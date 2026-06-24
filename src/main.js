@@ -918,12 +918,12 @@ function teardownOnline() {
 }
 function startSingle() { teardownOnline(); setGameMode('1P'); worlds[0].reset(); closeMenu(); }
 function startLocal2() { teardownOnline(); setGameMode('2P'); worlds.forEach(w => w.reset()); closeMenu(); }
+const DM_COLORS = [0xff5a3c, 0x3a8bff, 0x49d17a, 0xffd54a, 0xff5ad1, 0x5ad1ff, 0xff9a3a, 0xb06aff];
 function startDeathmatch() {
   teardownOnline();
-  arenaWorld = createArenaWorld([
-    { color: 0xff5a3c, isBot: false, name: '나' },
-    { color: 0x3a8bff, isBot: true,  name: '봇' },
-  ]);
+  const defs = [{ color: DM_COLORS[0], isBot: false, name: '나' }];
+  for (let i = 1; i < 8; i++) defs.push({ color: DM_COLORS[i], isBot: true, name: '봇' + i });
+  arenaWorld = createArenaWorld(defs);
   gameMode = 'DM';
   hud.classList.remove('split', 'online'); hud.classList.add('dm'); camWrap.classList.remove('split');
   updateModeTag(); sizeTargets(); closeMenu();
