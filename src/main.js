@@ -411,6 +411,18 @@ function createArenaWorld(riderDefs) {
   const ring = new THREE.Mesh(new THREE.TorusGeometry(DM.arenaR, 0.7, 8, 72), new THREE.MeshBasicMaterial({ color: 0x5ad1ff }));
   ring.rotation.x = Math.PI / 2; ring.position.y = 0.4; scene.add(ring);
 
+  // jump pads (점프대): drive over to launch into the air
+  const PADS = [];
+  for (let i = 0; i < DM.jumpPads; i++) {
+    const a = i * Math.PI * 2 / DM.jumpPads + 0.4, pr = DM.arenaR * 0.52;
+    const px = Math.cos(a) * pr, pz = Math.sin(a) * pr;
+    PADS.push({ x: px, z: pz });
+    const pad = new THREE.Mesh(new THREE.CylinderGeometry(DM.jumpPadR, DM.jumpPadR, 0.4, 18), new THREE.MeshBasicMaterial({ color: 0xffd54a }));
+    pad.position.set(px, 0.2, pz); scene.add(pad);
+    const rim = new THREE.Mesh(new THREE.TorusGeometry(DM.jumpPadR, 0.22, 6, 22), new THREE.MeshBasicMaterial({ color: 0xffffff }));
+    rim.rotation.x = Math.PI / 2; rim.position.set(px, 0.45, pz); scene.add(rim);
+  }
+
   const arena = { radius: DM.arenaR };
   const S = { time: 0, alive: true, nearEdge: false, over: false, winner: -1, result: '', cause: '' };
 
@@ -454,6 +466,8 @@ function createArenaWorld(riderDefs) {
     const r = riders[idx]; if (!r) return;
     if (s.x !== undefined) { r.tx = s.x; r.tz = s.z; r.th = s.h; }
     if (s.p !== undefined) r.pitch = s.p;
+    if (s.y !== undefined) r.y = s.y;
+    r.airFlag = !!s.j;
     if (s.a === false && r.alive) { r.alive = false; r.bike.visible = false; spawnExplosion(r.x, 1.4, r.z); }
   }
 
@@ -507,20 +521,22 @@ function createArenaWorld(riderDefs) {
     Object.assign(S, { time: 0, alive: true, nearEdge: false, over: false, winner: -1, result: '', cause: '' });
     const n = riders.length;
     riders.forEach((r, i) => {
-      const a = n > 1 ? (i * Math.PI * 2 / n) : 0, sr = n > 1 ? 26 : 0;
+      const a = n > 1 ? (i * Math.PI * 2 / n) : 0, sr = n > 1 ? DM.startR : 0;
       r.x = Math.sin(a) * sr; r.z = Math.cos(a) * sr; r.heading = (n > 1 ? Math.PI / 2 - a : 0); // tangent (circle), single=forward
       r.alive = true; r.speed = DM.moveSpeed; r.trailInit = false; r.bike.visible = true;
-      r.pitch = 0; r.bike.rotation.x = 0;
+      r.pitch = 0; r.air = 0; r.y = 0; r.head = 0; r.bike.rotation.x = 0;
       clearRiderTrail(r);
     });
     clearExplosion();
   }
   function positionAll(dt) {
-    for (const r of riders) { r.bike.position.set(r.x, 0, r.z); r.bike.rotation.y = -r.heading; r.bike.rotation.x = r.pitch || 0; }
+    for (const r of riders) { r.bike.position.set(r.x, r.y || 0, r.z); r.bike.rotation.y = -r.heading; r.bike.rotation.x = r.pitch || 0; }
     riders.forEach((r, i) => {
       const fx = Math.sin(r.heading), fz = -Math.cos(r.heading);
-      cameras[i].position.lerp(new THREE.Vector3(r.x - fx * 11, 22, r.z - fz * 11), Math.min(1, dt * 5));
-      cameras[i].lookAt(r.x + fx * 2, 0, r.z + fz * 2);
+      const rx = Math.cos(r.heading), rz = Math.sin(r.heading); // right vector for head-look pan
+      const hl = (r.head || 0) * 9;
+      cameras[i].position.lerp(new THREE.Vector3(r.x - fx * 13, 7.5 + (r.y || 0) * 0.4, r.z - fz * 13), Math.min(1, dt * 5));
+      cameras[i].lookAt(r.x + fx * 6 + rx * hl, (r.y || 0) + 1.6, r.z + fz * 6 + rz * hl);
     });
   }
   function update(dt, inputs) {
@@ -531,12 +547,20 @@ function createArenaWorld(riderDefs) {
       if (r.remote) {   // network-driven: lerp to target, build trail, no local sim/collision
         const k = Math.min(1, dt * 12);
         r.x += (r.tx - r.x) * k; r.z += (r.tz - r.z) * k; r.heading = r.th;
-        emitTrail(r);
+        if (!r.airFlag) emitTrail(r);   // skip trail while opponent airborne
         continue;
       }
       const inp = (inputs && inputs[r.idx]) || {};
       const steer = r.isBot ? botSteer(r) : (inp.steer || 0);
+      if (!r.isBot) r.head = inp.head || 0;
       let dead = false, cause = '';
+
+      // jump pad launch + airborne parabola (over trails, immune while flying)
+      if (r.air > 0) r.air -= dt;
+      else for (const p of PADS) if (Math.hypot(r.x - p.x, r.z - p.z) < DM.jumpPadR) { r.air = DM.jumpTime; break; }
+      const airborne = r.air > 0;
+      r.y = airborne ? Math.sin((1 - r.air / DM.jumpTime) * Math.PI) * DM.jumpHeight : 0;
+
       if (!r.isBot) {   // wheelie: hold to lift front wheel & boost speed; too high = flip
         const w = inp.wheelie || 0;
         r.pitch = Math.max(0, r.pitch + (w > 0 ? CFG.pitchRiseRate * w : CFG.pitchFallRate * w) * dt);
@@ -548,8 +572,8 @@ function createArenaWorld(riderDefs) {
       r.x += fx * r.speed * dt; r.z += fz * r.speed * dt;
 
       if (!dead && Math.hypot(r.x, r.z) > arena.radius) { dead = true; cause = '경계 이탈'; }
-      emitTrail(r);
-      if (!dead) for (const rr of riders) {
+      if (!airborne) emitTrail(r);                 // no trail while flying (gap)
+      if (!dead && !airborne) for (const rr of riders) {   // can't hit trails mid-air
         const skip = (rr === r) ? DM.graceSegs : 0;
         for (let i = 0; i < rr.trailSegs.length - skip; i++) if (distToSeg(r.x, r.z, rr.trailSegs[i]) < DM.trailW) { dead = true; cause = (rr === r) ? '트레일 충돌' : '상대 트레일'; break; }
         if (dead) break;
@@ -1045,7 +1069,7 @@ function loop() {
     if (odm && net && online.active) {
       const me = arenaWorld.riders[0];
       online.sendT -= dt;
-      if (online.sendT <= 0) { online.sendT = 0.066; net.send({ t: 'dmState', x: me.x, z: me.z, h: me.heading, p: me.pitch, a: me.alive }); }
+      if (online.sendT <= 0) { online.sendT = 0.066; net.send({ t: 'dmState', x: me.x, z: me.z, h: me.heading, p: me.pitch, y: me.y, j: me.air > 0 ? 1 : 0, a: me.alive }); }
       if (!online.raceOver && !me.alive) { online.raceOver = true; net.send({ t: 'dmDead' }); }
       if (dst.over && !online.resultShown) {
         online.resultShown = true;
@@ -1069,7 +1093,10 @@ function loop() {
       els.dmBanner.classList.toggle('win', win);
       els.dmBannerSub.textContent = `${dst.time.toFixed(1)}초${odm ? '' : ' · R 재시작'}`;
     }
-    compositeMat.uniforms.uSpeedL.value = 0; compositeMat.uniforms.uSpeedR.value = 0;
+    // high-speed screen warp when wheelie-boosted
+    const r0 = arenaWorld.riders[0];
+    compositeMat.uniforms.uSpeedL.value = Math.min(1, Math.max(0, (r0.speed - DM.moveSpeed) / (DM.moveSpeed * (DM.wheelieMul - 1))));
+    compositeMat.uniforms.uSpeedR.value = 0;
     compositeMat.uniforms.uFlashL.value.set(1, 1, 1, 0); compositeMat.uniforms.uFlashR.value.set(1, 1, 1, 0);
     renderer.setScissorTest(false);
     renderer.setRenderTarget(rts[0]); renderer.clear(); renderer.render(arenaWorld.scene, arenaWorld.cameras[0]);
