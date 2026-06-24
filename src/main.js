@@ -803,6 +803,7 @@ function setGameMode(mode) {
   hud.classList.toggle('split', mode === '2P');
   hud.classList.toggle('online', mode === 'ONLINE');
   hud.classList.remove('dm');
+  document.getElementById('miniViews').classList.remove('on');
   camWrap.classList.toggle('split', mode === '2P');
   updateModeTag();
   sizeTargets();
@@ -1196,6 +1197,55 @@ $('btnRematch').onclick = () => { if (net) { resetOnlineRound(); net.send({ t: '
 $('btnToMenu').onclick = () => { teardownOnline(); openMenu(); };
 
 // ---------------------------------------------------------------------------
+// TETR.IO-style opponent mini-views (right column)
+// ---------------------------------------------------------------------------
+const miniEl = document.getElementById('miniViews');
+const miniBoxes = [];
+function getMiniBox(i) {
+  if (!miniBoxes[i]) {
+    const d = document.createElement('div'); d.className = 'mini';
+    const l = document.createElement('div'); l.className = 'ml'; d.appendChild(l);
+    const o = document.createElement('div'); o.className = 'out'; o.textContent = 'OUT'; o.style.display = 'none'; d.appendChild(o);
+    d.style.display = 'none'; miniEl.appendChild(d);
+    miniBoxes[i] = { d, l, o };
+  }
+  return miniBoxes[i];
+}
+function renderMiniViews() {
+  if ((gameMode !== 'DM' && gameMode !== 'DMO') || !arenaWorld || arenaWorld.S.over) {
+    miniEl.classList.remove('on'); for (const b of miniBoxes) if (b) b.d.style.display = 'none'; return;
+  }
+  miniEl.classList.add('on');
+  const W = window.innerWidth, H = window.innerHeight;
+  const bw = 150, bh = 92, gap = 8, mr = 12, mt = 78;
+  const me = gameMode === 'DMO' ? online.mySlot : 0;
+  const opps = arenaWorld.riders.filter(r => r.idx !== me && !r.startDead);
+  let shown = 0;
+  for (const r of opps) {
+    if (shown >= 7) break;
+    const yTop = mt + shown * (bh + gap);
+    if (yTop + bh > H - 16) break;
+    const x = W - bw - mr;
+    const box = getMiniBox(shown);
+    box.d.style.cssText = `display:block; left:${x}px; top:${yTop}px; width:${bw}px; height:${bh}px; border-color:#${DM_COLORS[r.idx % 8].toString(16).padStart(6, '0')};`;
+    box.l.textContent = 'P' + (r.idx + 1);
+    box.d.classList.toggle('dead', !r.alive);
+    box.o.style.display = r.alive ? 'none' : 'flex';
+    if (r.alive) {
+      const yGl = H - yTop - bh, cam = arenaWorld.cameras[r.idx];
+      cam.aspect = bw / bh; cam.updateProjectionMatrix();
+      renderer.setViewport(x, yGl, bw, bh);
+      renderer.setScissor(x, yGl, bw, bh); renderer.setScissorTest(true);
+      renderer.setRenderTarget(null); renderer.clear();
+      renderer.render(arenaWorld.scene, cam);
+    }
+    shown++;
+  }
+  renderer.setScissorTest(false); renderer.setViewport(0, 0, W, H);
+  for (let i = shown; i < miniBoxes.length; i++) if (miniBoxes[i]) miniBoxes[i].d.style.display = 'none';
+}
+
+// ---------------------------------------------------------------------------
 // Loop
 // ---------------------------------------------------------------------------
 addEventListener('resize', sizeTargets);
@@ -1253,6 +1303,7 @@ function loop() {
     renderer.setRenderTarget(rts[0]); renderer.clear(); renderer.render(arenaWorld.scene, victory ? arenaWorld.winCam : arenaWorld.cameras[mySlot]);
     if (two) { renderer.setRenderTarget(rts[1]); renderer.clear(); renderer.render(arenaWorld.scene, victory ? arenaWorld.winCam : arenaWorld.cameras[1]); }
     renderer.setRenderTarget(null); renderer.clear(); renderer.render(quadScene, quadCam);
+    renderMiniViews();
     drawCamOverlay();
     requestAnimationFrame(loop);
     return;
