@@ -44,7 +44,7 @@
 | **E3** | 데스매치 웹캠(inputFor) + 고개 yaw 카메라 패닝 | ✅ (E2와 함께, head→camera) |
 | **E4** | vs AI 8인 배틀로얄 | ✅ `dm_e4_8players` |
 | **E5** | **온라인 8인**: PeerJS **star 토폴로지** | ✅ net.js 멀티커넥션+릴레이, 호스트 권한 로비(슬롯배정/레디 브로드캐스트, 최대8), 상태릴레이('st'/'dead'), 아레나 mySlot로컬·나머지remote·부재슬롯 시작사망. 레이싱 회귀OK. `dm_e5_lobby`. ⚠️풀 8PC는 배포 사이트 실테스트 |
-| **E6** | **TETR.IO식 우측 상대 미니뷰**(상대들 작은 화면/상태) — 레퍼런스 `Desktop/images.jpg` | ⬜ |
+| **E6** | **TETR.IO식 우측 상대 미니뷰** | ✅ 우측 컬럼에 상대별 작은 뷰포트(추적카메라)+색테두리+P번호, 사망=회색 OUT, 화면높이 자동맞춤. `dm_e6_miniviews2`. DM/DMO에서 표시 |
 
 - **튜닝 추가**: wheelieMul 1.7, trailMax 120, arenaR 95/startR 42/minR 16, jumpPadR 3.8/jumpTime 0.85/jumpHeight 7/jumpPads 7
 - **서버**: serve.py를 **ThreadingHTTPServer**로(단일스레드 행 방지)
