@@ -1061,8 +1061,11 @@ function dmBroadcastLobby() {
   dmRenderLobby();
 }
 function dmRenderLobby() {
+  const list = online.lobby || [];
+  const ready = list.filter(p => p.ready).length;
+  $('lobbyCount').textContent = `👥 ${list.length}/8명 입장 · 준비 ${ready}/${list.length}`;
   const el = $('lobbyPlayers'); el.innerHTML = '';
-  (online.lobby || []).slice().sort((a, b) => a.slot - b.slot).forEach(p => {
+  list.slice().sort((a, b) => a.slot - b.slot).forEach(p => {
     const c = document.createElement('div');
     c.className = 'pcard' + (p.ready ? ' ready' : '');
     c.style.color = '#' + DM_COLORS[p.slot % 8].toString(16).padStart(6, '0');
@@ -1105,13 +1108,16 @@ async function hostRoom() {
   try { const code = await net.host(); openLobby(code, true); }
   catch (e) { setMsg('onlineMsg', '방 생성 실패: ' + (e.message || e)); net = null; }
 }
-async function joinRoom() {
-  const code = $('joinCode').value.trim().toUpperCase();
+async function joinByCode(rawCode, gt) {
+  const code = (rawCode || '').trim().toUpperCase();
   if (code.length < 4) { setMsg('onlineMsg', '코드를 입력하세요'); return; }
+  if (gt) online.gameType = gt;
   setMsg('onlineMsg', '연결 중...'); net = new Net(); bindNet();
   try { await net.join(code); online.oppHere = true; openLobby(code, false); }
   catch (e) { setMsg('onlineMsg', '연결 실패: ' + (e.message || e)); net = null; }
 }
+function joinRoom() { joinByCode($('joinCode').value); }
+function roomLink() { return location.origin + location.pathname + '?room=' + (net ? net.code : ''); }
 function resetOnlineRound() { online.started = false; online.raceOver = false; online.meReady = false; online.oppReady = false; online.resultShown = false; }
 function openLobby(code, isHost) {
   resetOnlineRound();
@@ -1119,12 +1125,14 @@ function openLobby(code, isHost) {
   showScreen('lobby');
   if (online.gameType === 'dm') {
     $('raceCards').style.display = 'none'; $('lobbyPlayers').style.display = 'flex';
+    $('btnCopyLink').style.display = 'block'; $('lobbyCount').style.display = 'block';
     online.myReady = false;
     if (isHost) { online.mySlot = 0; online.players = [{ slot: 0, connId: null, ready: false }]; dmBroadcastLobby(); }
     else { online.lobby = []; dmRenderLobby(); }
-    setMsg('lobbyMsg', isHost ? '최대 8인 · 코드 공유, 전원 준비 시 시작' : '입장! 준비를 누르세요');
+    setMsg('lobbyMsg', isHost ? '대기실 · 링크/코드 공유, 전원 준비 시 시작 (최대 8인)' : '입장! 준비를 누르세요');
   } else {
     $('raceCards').style.display = 'flex'; $('lobbyPlayers').style.display = 'none';
+    $('btnCopyLink').style.display = 'none'; $('lobbyCount').style.display = 'none';
     lobbyUpdate();
     setMsg('lobbyMsg', isHost ? '상대를 기다리는 중... 코드를 공유하세요' : '입장 완료!');
   }
@@ -1205,6 +1213,12 @@ $('btnReady').onclick = toggleReady;
 $('btnLeave').onclick = () => { teardownOnline(); showScreen('main'); };
 $('btnRematch').onclick = () => { if (net) { resetOnlineRound(); net.send({ t: 'rematch' }); openLobby(net.code, net.isHost); } else openMenu(); };
 $('btnToMenu').onclick = () => { teardownOnline(); openMenu(); };
+$('btnCopyLink').onclick = () => {
+  const url = roomLink();
+  const ok = () => setMsg('lobbyMsg', '🔗 초대 링크 복사됨! 친구에게 보내세요');
+  if (navigator.clipboard) navigator.clipboard.writeText(url).then(ok, () => setMsg('lobbyMsg', url));
+  else setMsg('lobbyMsg', url);
+};
 
 // ---------------------------------------------------------------------------
 // TETR.IO-style opponent mini-views (right column)
@@ -1370,4 +1384,7 @@ updateModeTag();
 sizeTargets();
 document.getElementById('loading').style.display = 'none';
 openMenu();   // start at the menu (game runs behind as backdrop)
+// auto-join a deathmatch room from a shared invite link (?room=CODE)
+const urlRoom = new URLSearchParams(location.search).get('room');
+if (urlRoom) { online.gameType = 'dm'; showScreen('online'); setMsg('onlineMsg', '초대 링크로 입장 중...'); joinByCode(urlRoom, 'dm'); }
 loop();

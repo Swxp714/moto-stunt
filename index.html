@@ -95,6 +95,7 @@
     #motionDbg { position: fixed; bottom: 38px; left: 18px; z-index: 20; display: none;
       font-family: var(--font); font-size: 11px; color: var(--cyan); letter-spacing: .04em; }
     #motionDbg.on { display: block; }
+    .lobby-count { font-family: var(--font); font-size: 11px; color: var(--cyan); margin: 4px 0 2px; letter-spacing: .05em; }
     #motionDbg b.no { color: #ff6a6a; }
     #motionDbg b.ok { color: #7CFC9A; }
 
@@ -239,6 +240,8 @@
 
     <div class="m-screen" data-s="lobby" hidden>
       <div class="m-code">방 코드<b id="lobbyCode">-----</b></div>
+      <button class="mbtn ghost" id="btnCopyLink" style="display:none;">🔗 초대 링크 복사</button>
+      <div class="lobby-count" id="lobbyCount" style="display:none;"></div>
       <div class="m-players" id="raceCards">
         <div class="pcard p1" id="meCard">나<span class="rdy" id="meRdy">대기 중</span></div>
         <div class="pcard p2" id="oppCard">상대<span class="rdy" id="oppRdy">없음</span></div>
