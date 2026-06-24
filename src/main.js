@@ -468,7 +468,7 @@ function createArenaWorld(riderDefs) {
     if (s.p !== undefined) r.pitch = s.p;
     if (s.y !== undefined) r.y = s.y;
     r.airFlag = !!s.j;
-    if (s.a === false && r.alive) { r.alive = false; r.bike.visible = false; spawnExplosion(r.x, 1.4, r.z); }
+    if (s.a === false && r.alive) { r.alive = false; r.bike.visible = false; spawnExplosion(r.x, 1.4, r.z); clearRiderTrail(r); }
   }
 
   // bot AI: probe ahead, steer away from boundary / any trail
@@ -523,6 +523,33 @@ function createArenaWorld(riderDefs) {
   }
   function clearExplosion() { for (let i = 0; i < EXP_MAX; i++) { expLife[i] = 0; expPos[i*3+1] = -9999; } expGeo.attributes.position.needsUpdate = true; }
 
+  // --- wheelie sparks (continuous) ---
+  const SPK_MAX = 120;
+  const spkPos = new Float32Array(SPK_MAX * 3).fill(-9999), spkVel = new Float32Array(SPK_MAX * 3), spkLife = new Float32Array(SPK_MAX);
+  let spkIdx = 0;
+  const spkGeo = new THREE.BufferGeometry(); spkGeo.setAttribute('position', new THREE.BufferAttribute(spkPos, 3));
+  scene.add(new THREE.Points(spkGeo, new THREE.PointsMaterial({ color: 0xffc23a, size: 2.0, sizeAttenuation: false, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false })));
+  function spawnSpark(x, y, z) {
+    const i = spkIdx; spkIdx = (spkIdx + 1) % SPK_MAX;
+    spkPos[i*3] = x; spkPos[i*3+1] = y; spkPos[i*3+2] = z;
+    spkVel[i*3] = (Math.random()-0.5)*5; spkVel[i*3+1] = 2+Math.random()*4; spkVel[i*3+2] = (Math.random()-0.5)*5;
+    spkLife[i] = 0.25 + Math.random()*0.2;
+  }
+  function updateSparks(dt) { for (let i=0;i<SPK_MAX;i++){ if(spkLife[i]<=0)continue; spkLife[i]-=dt; if(spkLife[i]<=0){spkPos[i*3+1]=-9999;continue;} spkVel[i*3+1]-=24*dt; spkPos[i*3]+=spkVel[i*3]*dt; spkPos[i*3+1]+=spkVel[i*3+1]*dt; spkPos[i*3+2]+=spkVel[i*3+2]*dt; } spkGeo.attributes.position.needsUpdate=true; }
+
+  // --- victory fireworks + camera ---
+  const winCam = new THREE.PerspectiveCamera(60, 1, 0.1, 1000);
+  let winAng = 0, fwT = 0;
+  const FW_MAX = 220;
+  const fwPos = new Float32Array(FW_MAX*3).fill(-9999), fwVel = new Float32Array(FW_MAX*3), fwLife = new Float32Array(FW_MAX), fwCol = new Float32Array(FW_MAX*3);
+  let fwIdx = 0;
+  const fwGeo = new THREE.BufferGeometry(); fwGeo.setAttribute('position', new THREE.BufferAttribute(fwPos,3)); fwGeo.setAttribute('color', new THREE.BufferAttribute(fwCol,3));
+  scene.add(new THREE.Points(fwGeo, new THREE.PointsMaterial({ size: 2.6, sizeAttenuation: false, vertexColors: true, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false })));
+  const FWPAL = [[1,0.3,0.3],[1,0.8,0.2],[0.4,0.8,1],[0.6,1,0.5],[1,0.5,0.9],[1,1,1]];
+  function launchFw(x,y,z){ const c=FWPAL[(Math.random()*FWPAL.length)|0], sp=9+Math.random()*6; for(let k=0;k<40;k++){ const i=fwIdx; fwIdx=(fwIdx+1)%FW_MAX; const th=Math.random()*Math.PI*2, ph=Math.acos(2*Math.random()-1), s=sp*(0.6+Math.random()*0.4); fwPos[i*3]=x;fwPos[i*3+1]=y;fwPos[i*3+2]=z; fwVel[i*3]=Math.sin(ph)*Math.cos(th)*s; fwVel[i*3+1]=Math.cos(ph)*s; fwVel[i*3+2]=Math.sin(ph)*Math.sin(th)*s; fwCol[i*3]=c[0];fwCol[i*3+1]=c[1];fwCol[i*3+2]=c[2]; fwLife[i]=1.0+Math.random()*0.6; } fwGeo.attributes.color.needsUpdate=true; }
+  function updateFw(dt){ for(let i=0;i<FW_MAX;i++){ if(fwLife[i]<=0)continue; fwLife[i]-=dt; if(fwLife[i]<=0){fwPos[i*3+1]=-9999;continue;} fwVel[i*3+1]-=9*dt; fwPos[i*3]+=fwVel[i*3]*dt; fwPos[i*3+1]+=fwVel[i*3+1]*dt; fwPos[i*3+2]+=fwVel[i*3+2]*dt; } fwGeo.attributes.position.needsUpdate=true; }
+  function clearFx() { winAng = 0; for(let i=0;i<FW_MAX;i++){fwLife[i]=0;fwPos[i*3+1]=-9999;} for(let i=0;i<SPK_MAX;i++){spkLife[i]=0;spkPos[i*3+1]=-9999;} fwGeo.attributes.position.needsUpdate=true; spkGeo.attributes.position.needsUpdate=true; }
+
   function reset() {
     arena.radius = DM.arenaR; ring.scale.setScalar(1);
     Object.assign(S, { time: 0, alive: true, nearEdge: false, over: false, winner: -1, result: '', cause: '' });
@@ -534,7 +561,7 @@ function createArenaWorld(riderDefs) {
       r.pitch = 0; r.air = 0; r.y = 0; r.head = 0; r.bike.rotation.x = 0;
       clearRiderTrail(r);
     });
-    clearExplosion();
+    clearExplosion(); clearFx();
   }
   function positionAll(dt) {
     for (const r of riders) { r.bike.position.set(r.x, r.y || 0, r.z); r.bike.rotation.y = -r.heading; r.bike.rotation.x = r.pitch || 0; }
@@ -547,8 +574,18 @@ function createArenaWorld(riderDefs) {
     });
   }
   function update(dt, inputs) {
-    if (paused) { positionAll(dt); updateExplosion(dt); return; }
-    if (!S.over) { S.time += dt; arena.radius = Math.max(DM.minR, arena.radius - DM.shrinkRate * dt); ring.scale.setScalar(arena.radius / DM.arenaR); }
+    if (paused) { positionAll(dt); updateExplosion(dt); updateSparks(dt); updateFw(dt); return; }
+    if (S.over) {   // freeze; victory camera orbits the winner + fireworks
+      if (S.winner >= 0) {
+        const w = riders[S.winner];
+        winAng += dt * 0.4;
+        winCam.position.set(w.x + Math.sin(winAng) * 14, 9, w.z + Math.cos(winAng) * 14);
+        winCam.lookAt(w.x, 2, w.z);
+        fwT -= dt; if (fwT <= 0) { fwT = 0.45; launchFw(w.x + (Math.random() - 0.5) * 18, 10 + Math.random() * 10, w.z + (Math.random() - 0.5) * 18); }
+      }
+      updateExplosion(dt); updateSparks(dt); updateFw(dt); positionAll(dt); return;
+    }
+    S.time += dt; arena.radius = Math.max(DM.minR, arena.radius - DM.shrinkRate * dt); ring.scale.setScalar(arena.radius / DM.arenaR);
     for (const r of riders) {
       if (!r.alive) continue;
       if (r.remote) {   // network-driven: lerp to target, build trail, no local sim/collision
@@ -568,10 +605,10 @@ function createArenaWorld(riderDefs) {
       const airborne = r.air > 0;
       r.y = airborne ? Math.sin((1 - r.air / DM.jumpTime) * Math.PI) * DM.jumpHeight : 0;
 
-      if (!r.isBot) {   // wheelie: hold to lift front wheel & boost speed; too high = flip
+      if (!r.isBot) {   // wheelie: hold to lift front wheel & boost speed; too high = flip (but safe mid-air)
         const w = inp.wheelie || 0;
         r.pitch = Math.max(0, r.pitch + (w > 0 ? CFG.pitchRiseRate * w : CFG.pitchFallRate * w) * dt);
-        if (r.pitch > CFG.maxPitch) { dead = true; cause = '윌리 전복'; }
+        if (r.pitch > CFG.maxPitch && !airborne) { dead = true; cause = '윌리 전복'; }
       }
       r.speed = DM.moveSpeed * (1 + (DM.wheelieMul - 1) * Math.min(1, r.pitch / CFG.maxPitch));
       r.heading += steer * DM.turnRate * dt;
@@ -585,7 +622,7 @@ function createArenaWorld(riderDefs) {
         for (let i = 0; i < rr.trailSegs.length - skip; i++) if (distToSeg(r.x, r.z, rr.trailSegs[i]) < DM.trailW) { dead = true; cause = (rr === r) ? '트레일 충돌' : '상대 트레일'; break; }
         if (dead) break;
       }
-      if (dead) { r.alive = false; r.bike.visible = false; spawnExplosion(r.x, 1.4, r.z); if (r.idx === 0) S.cause = cause; }
+      if (dead) { r.alive = false; r.bike.visible = false; spawnExplosion(r.x, 1.4, r.z); clearRiderTrail(r); if (r.idx === 0) S.cause = cause; }
     }
 
     const aliveR = riders.filter(r => r.alive);
@@ -596,11 +633,12 @@ function createArenaWorld(riderDefs) {
     S.alive = riders[0].alive;
     S.nearEdge = riders[0].alive && Math.hypot(riders[0].x, riders[0].z) > arena.radius * 0.8;
 
-    updateExplosion(dt);
+    for (const r of riders) if (r.alive && r.pitch > CFG.maxPitch * 0.6) spawnSpark(r.x + (Math.random() - 0.5) * 0.6, 0.25, r.z + (Math.random() - 0.5) * 0.6);
+    updateExplosion(dt); updateSparks(dt); updateFw(dt);
     positionAll(dt);
   }
   reset();
-  return { scene, get camera() { return cameras[0]; }, cameras, update, reset, setPaused, applyRemote, S, riders };
+  return { scene, get camera() { return cameras[0]; }, cameras, winCam, update, reset, setPaused, applyRemote, S, riders };
 }
 let arenaWorld = null;
 
@@ -700,7 +738,10 @@ function sizeTargets() {
   compositeMat.uniforms.uResolution.value.set(W, H);
   compositeMat.uniforms.uSplit.value = split ? 1 : 0;
   compositeMat.uniforms.uTint.value = split ? 0.4 : 0;
-  if (arenaWorld) arenaWorld.cameras.forEach(c => { c.aspect = halfW / H; c.updateProjectionMatrix(); });
+  if (arenaWorld) {
+    arenaWorld.cameras.forEach(c => { c.aspect = halfW / H; c.updateProjectionMatrix(); });
+    arenaWorld.winCam.aspect = halfW / H; arenaWorld.winCam.updateProjectionMatrix();
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -1197,22 +1238,20 @@ function loop() {
     els.dmWarn.classList.toggle('on', !two && !!dst.nearEdge);
     els.dmBanner.classList.toggle('show', dst.over);
     if (dst.over) {
-      let txt, win = false;
-      if (two) { txt = dst.winner < 0 ? '무승부' : `PLAYER ${dst.winner + 1} WIN!`; win = dst.winner >= 0; }
-      else if (odm) { win = dst.winner === mySlot; txt = win ? '승리!' : (dst.winner < 0 ? '무승부' : '패배'); }
-      else { txt = dst.winner === 0 ? '승리!' : (dst.winner < 0 ? '무승부' : '패배'); win = dst.winner === 0; }
-      els.dmBannerBig.textContent = txt;
-      els.dmBanner.classList.toggle('win', win);
-      els.dmBannerSub.textContent = `${dst.time.toFixed(1)}초${odm ? '' : ' · R 재시작'}`;
+      els.dmBannerBig.textContent = dst.winner < 0 ? '무승부' : `PLAYER ${dst.winner + 1} 우승!`;
+      els.dmBanner.classList.toggle('win', dst.winner >= 0);
+      const mine = odm ? (dst.winner === mySlot) : (dst.winner === 0);
+      els.dmBannerSub.textContent = `${mine ? '내가 우승 🎉 · ' : ''}${dst.time.toFixed(1)}초${odm ? '' : ' · R 재시작'}`;
     }
     // high-speed screen warp when wheelie-boosted (my rider)
     const r0 = arenaWorld.riders[mySlot];
     compositeMat.uniforms.uSpeedL.value = Math.min(1, Math.max(0, (r0.speed - DM.moveSpeed) / (DM.moveSpeed * (DM.wheelieMul - 1))));
     compositeMat.uniforms.uSpeedR.value = 0;
     compositeMat.uniforms.uFlashL.value.set(1, 1, 1, 0); compositeMat.uniforms.uFlashR.value.set(1, 1, 1, 0);
+    const victory = dst.over && dst.winner >= 0;
     renderer.setScissorTest(false);
-    renderer.setRenderTarget(rts[0]); renderer.clear(); renderer.render(arenaWorld.scene, arenaWorld.cameras[mySlot]);
-    if (two) { renderer.setRenderTarget(rts[1]); renderer.clear(); renderer.render(arenaWorld.scene, arenaWorld.cameras[1]); }
+    renderer.setRenderTarget(rts[0]); renderer.clear(); renderer.render(arenaWorld.scene, victory ? arenaWorld.winCam : arenaWorld.cameras[mySlot]);
+    if (two) { renderer.setRenderTarget(rts[1]); renderer.clear(); renderer.render(arenaWorld.scene, victory ? arenaWorld.winCam : arenaWorld.cameras[1]); }
     renderer.setRenderTarget(null); renderer.clear(); renderer.render(quadScene, quadCam);
     drawCamOverlay();
     requestAnimationFrame(loop);
