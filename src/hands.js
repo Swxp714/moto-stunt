@@ -7,7 +7,7 @@ const VISION_WASM = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3
 const MODEL_URL   = 'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task';
 const FACE_MODEL  = 'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task';
 const HEAD_GAIN = 2.6;     // head-yaw sensitivity
-const HEAD_INVERT = false; // flip if camera pans the wrong way
+const HEAD_INVERT = true;  // flip if camera pans the wrong way (user: was reversed)
 
 const GRIP = 9;            // middle_MCP — most stable hand-center landmark
 const FULL_LOCK = 1.05;    // rad of handlebar tilt that = full steer (bigger = less sensitive)
