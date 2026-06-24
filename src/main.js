@@ -437,7 +437,7 @@ function createArenaWorld(riderDefs) {
   function makeRider(def, idx) {
     const bike = buildBike(def.color); scene.add(bike);
     bike.rotation.order = 'YXZ';   // yaw (heading) then pitch (wheelie)
-    return { idx, isBot: !!def.isBot, remote: !!def.remote, name: def.name, color: def.color, bike,
+    return { idx, isBot: !!def.isBot, remote: !!def.remote, startDead: !!def.dead, name: def.name, color: def.color, bike,
       trailMat: new THREE.MeshBasicMaterial({ color: def.color }), trailSegs: [], trailMeshes: [],
       x: 0, z: 0, heading: 0, pitch: 0, speed: DM.moveSpeed, alive: true, lastTX: 0, lastTZ: 0, trailInit: false,
       air: 0, y: 0, head: 0, airFlag: false,   // jump timer / height / head-look / remote airborne
@@ -523,7 +523,7 @@ function createArenaWorld(riderDefs) {
     riders.forEach((r, i) => {
       const a = n > 1 ? (i * Math.PI * 2 / n) : 0, sr = n > 1 ? DM.startR : 0;
       r.x = Math.sin(a) * sr; r.z = Math.cos(a) * sr; r.heading = (n > 1 ? Math.PI / 2 - a : 0); // tangent (circle), single=forward
-      r.alive = true; r.speed = DM.moveSpeed; r.trailInit = false; r.bike.visible = true;
+      r.alive = !r.startDead; r.speed = DM.moveSpeed; r.trailInit = false; r.bike.visible = !r.startDead;
       r.pitch = 0; r.air = 0; r.y = 0; r.head = 0; r.bike.rotation.x = 0;
       clearRiderTrail(r);
     });
@@ -903,7 +903,8 @@ const cdEl = document.getElementById('countdown');
 const $ = (id) => document.getElementById(id);
 let inMenu = true;
 let net = null;
-const online = { active: false, meReady: false, oppReady: false, oppHere: false, raceOver: false, started: false, sendT: 0, gameType: 'race', resultShown: false };
+const online = { active: false, meReady: false, oppReady: false, oppHere: false, raceOver: false, started: false, sendT: 0, gameType: 'race', resultShown: false,
+  players: [], mySlot: 0, myReady: false, lobby: [] };   // N-player DM (star)
 
 function showScreen(name) { menuEl.querySelectorAll('.m-screen').forEach(s => { s.hidden = (s.dataset.s !== name); }); }
 function openMenu() { inMenu = true; menuEl.classList.remove('hidden'); hud.classList.remove('online', 'dm'); showScreen('main'); }
@@ -912,6 +913,7 @@ function setMsg(id, t) { $(id).textContent = t || ''; }
 
 function teardownOnline() {
   online.active = online.started = false;
+  online.players = []; online.lobby = []; online.mySlot = 0; online.myReady = false;
   if (cdTimer) { clearInterval(cdTimer); cdTimer = null; cdEl.classList.remove('show'); }
   if (net) { net.close(); net = null; }
   worlds[0].clearOpponent();
@@ -940,21 +942,104 @@ function startDeathmatchLocal2() {
 }
 
 function bindNet() {
-  net.on('peerJoined', () => { online.oppHere = true; lobbyUpdate(); setMsg('lobbyMsg', '상대 입장! 둘 다 준비하면 시작'); })
-     .on('peerLeft', () => { online.oppHere = false; online.oppReady = false; lobbyUpdate();
-        if (online.started) endOnline('상대가 나갔습니다'); else setMsg('lobbyMsg', '상대가 나갔습니다'); })
+  net.on('peerJoined', (id) => {
+        if (online.gameType === 'dm') { if (net.isHost) dmHostAssign(id); }
+        else { online.oppHere = true; lobbyUpdate(); setMsg('lobbyMsg', '상대 입장! 둘 다 준비하면 시작'); }
+      })
+     .on('peerLeft', (id) => {
+        if (online.gameType === 'dm') {
+          if (net.isHost) dmHostRemove(id);
+          else if (online.started) endOnline('호스트 연결 끊김'); else setMsg('lobbyMsg', '호스트 연결 끊김');
+        } else {
+          online.oppHere = false; online.oppReady = false; lobbyUpdate();
+          if (online.started) endOnline('상대가 나갔습니다'); else setMsg('lobbyMsg', '상대가 나갔습니다');
+        }
+      })
      .on('error', (e) => setMsg('onlineMsg', '오류: ' + (e && (e.message || e.type) || e)))
      .on('data', onNetData);
 }
-function onNetData(d) {
+function onNetData(d, fromId) {
   if (!d || !d.t) return;
+  if (online.gameType === 'dm') return dmOnData(d, fromId);
+  // --- racing 1v1 ---
   if (d.t === 'ready') { online.oppReady = d.v; lobbyUpdate(); maybeStart(); }
   else if (d.t === 'start') beginCountdown(d.gt);
   else if (d.t === 'state') worlds[0].setOpponentState(d);
   else if (d.t === 'finish') { if (online.active && !online.raceOver) { online.raceOver = true; finishOnline(false); } }
-  else if (d.t === 'dmState') { if (arenaWorld && gameMode === 'DMO') arenaWorld.applyRemote(1, d); }
-  else if (d.t === 'dmDead') { if (arenaWorld && gameMode === 'DMO') arenaWorld.applyRemote(1, { a: false }); }
   else if (d.t === 'rematch') { resetOnlineRound(); openLobby(net.code, net.isHost); }
+}
+
+// ---- N-player deathmatch (star: host relays) ----
+function dmOnData(d, fromId) {
+  if (net.isHost) {                                  // host receives from a guest
+    if (d.t === 'ready') { const p = online.players.find(p => p.connId === fromId); if (p) p.ready = d.v; dmBroadcastLobby(); dmMaybeStart(); }
+    else if (d.t === 'st') { if (arenaWorld && gameMode === 'DMO') arenaWorld.applyRemote(d.slot, d); net.relay(d, fromId); }
+    else if (d.t === 'dead') { if (arenaWorld) arenaWorld.applyRemote(d.slot, { a: false }); net.relay(d, fromId); }
+  } else {                                           // guest receives from host
+    if (d.t === 'welcome') online.mySlot = d.slot;
+    else if (d.t === 'lobby') { online.lobby = d.players; dmRenderLobby(); }
+    else if (d.t === 'start') dmBeginCountdown(d);
+    else if (d.t === 'st') { if (arenaWorld && gameMode === 'DMO' && d.slot !== online.mySlot) arenaWorld.applyRemote(d.slot, d); }
+    else if (d.t === 'dead') { if (arenaWorld && d.slot !== online.mySlot) arenaWorld.applyRemote(d.slot, { a: false }); }
+  }
+}
+function dmHostAssign(connId) {
+  if (online.players.length >= 8) { net.sendTo(connId, { t: 'full' }); return; }
+  const used = new Set(online.players.map(p => p.slot)); let slot = 1; while (used.has(slot)) slot++;
+  online.players.push({ slot, connId, ready: false });
+  net.sendTo(connId, { t: 'welcome', slot });
+  dmBroadcastLobby();
+}
+function dmHostRemove(connId) {
+  const p = online.players.find(p => p.connId === connId);
+  online.players = online.players.filter(x => x.connId !== connId);
+  dmBroadcastLobby();
+  if (online.started && p && arenaWorld) { arenaWorld.applyRemote(p.slot, { a: false }); net.send({ t: 'dead', slot: p.slot }); }
+}
+function dmBroadcastLobby() {
+  online.lobby = online.players.map(p => ({ slot: p.slot, ready: p.ready }));
+  net.send({ t: 'lobby', players: online.lobby });   // host -> all guests
+  dmRenderLobby();
+}
+function dmRenderLobby() {
+  const el = $('lobbyPlayers'); el.innerHTML = '';
+  (online.lobby || []).slice().sort((a, b) => a.slot - b.slot).forEach(p => {
+    const c = document.createElement('div');
+    c.className = 'pcard' + (p.ready ? ' ready' : '');
+    c.style.color = '#' + DM_COLORS[p.slot % 8].toString(16).padStart(6, '0');
+    c.innerHTML = (p.slot === online.mySlot ? '나' : ('P' + (p.slot + 1))) + '<span class="rdy">' + (p.ready ? '준비' : '대기') + '</span>';
+    el.appendChild(c);
+  });
+}
+function dmMaybeStart() {
+  if (!net || !net.isHost || online.started) return;
+  if (online.players.length >= 2 && online.players.every(p => p.ready)) {
+    const slots = online.players.map(p => p.slot).sort((a, b) => a - b);
+    net.send({ t: 'start', slots });
+    dmBeginCountdown({ slots });
+  }
+}
+function dmBeginCountdown(cfg) {
+  if (online.started) return;
+  online.started = true; online.gameType = 'dm'; online.active = true; online.raceOver = false; online.resultShown = false; closeMenu();
+  const slots = cfg.slots || [0, online.mySlot];
+  const maxSlot = Math.max(...slots, online.mySlot);
+  const defs = [];
+  for (let s = 0; s <= maxSlot; s++) {
+    const present = slots.includes(s);
+    defs.push({ color: DM_COLORS[s % 8], isBot: false, remote: s !== online.mySlot, dead: !present, name: 'P' + (s + 1) });
+  }
+  arenaWorld = createArenaWorld(defs);
+  gameMode = 'DMO';
+  hud.classList.remove('split', 'online'); hud.classList.add('dm'); camWrap.classList.remove('split');
+  updateModeTag(); sizeTargets(); arenaWorld.setPaused(true);
+  let n = 3; cdEl.classList.add('show'); cdEl.textContent = n;
+  cdTimer = setInterval(() => {
+    n--;
+    if (n > 0) cdEl.textContent = n;
+    else if (n === 0) { cdEl.textContent = 'GO!'; arenaWorld.setPaused(false); }
+    else { clearInterval(cdTimer); cdTimer = null; cdEl.classList.remove('show'); }
+  }, 800);
 }
 async function hostRoom() {
   setMsg('onlineMsg', '방 생성 중...'); net = new Net(); bindNet();
@@ -972,8 +1057,18 @@ function resetOnlineRound() { online.started = false; online.raceOver = false; o
 function openLobby(code, isHost) {
   resetOnlineRound();
   $('lobbyCode').textContent = code; $('btnReady').textContent = '준비';
-  showScreen('lobby'); lobbyUpdate();
-  setMsg('lobbyMsg', isHost ? '상대를 기다리는 중... 코드를 공유하세요' : '입장 완료!');
+  showScreen('lobby');
+  if (online.gameType === 'dm') {
+    $('raceCards').style.display = 'none'; $('lobbyPlayers').style.display = 'flex';
+    online.myReady = false;
+    if (isHost) { online.mySlot = 0; online.players = [{ slot: 0, connId: null, ready: false }]; dmBroadcastLobby(); }
+    else { online.lobby = []; dmRenderLobby(); }
+    setMsg('lobbyMsg', isHost ? '최대 8인 · 코드 공유, 전원 준비 시 시작' : '입장! 준비를 누르세요');
+  } else {
+    $('raceCards').style.display = 'flex'; $('lobbyPlayers').style.display = 'none';
+    lobbyUpdate();
+    setMsg('lobbyMsg', isHost ? '상대를 기다리는 중... 코드를 공유하세요' : '입장 완료!');
+  }
 }
 function lobbyUpdate() {
   $('meCard').classList.toggle('ready', online.meReady);
@@ -982,6 +1077,13 @@ function lobbyUpdate() {
   $('oppRdy').textContent = !online.oppHere ? '없음' : (online.oppReady ? '준비 완료' : '대기 중');
 }
 function toggleReady() {
+  if (online.gameType === 'dm') {
+    online.myReady = !online.myReady;
+    $('btnReady').textContent = online.myReady ? '준비 취소' : '준비';
+    if (net.isHost) { const me = online.players.find(p => p.slot === 0); if (me) me.ready = online.myReady; dmBroadcastLobby(); dmMaybeStart(); }
+    else net.send({ t: 'ready', v: online.myReady });
+    return;
+  }
   if (!online.oppHere) { setMsg('lobbyMsg', '상대가 아직 없습니다'); return; }
   online.meReady = !online.meReady;
   $('btnReady').textContent = online.meReady ? '준비 취소' : '준비';
@@ -1058,22 +1160,24 @@ function loop() {
   // ---- TRAIL DEATHMATCH branch ----
   if ((gameMode === 'DM' || gameMode === 'DM2' || gameMode === 'DMO') && arenaWorld) {
     const two = gameMode === 'DM2', odm = gameMode === 'DMO';
-    const inputs = two
-      ? [{ steer: dmSteer('KeyA', 'KeyD'), wheelie: keys.has('KeyW') ? 1 : -1 },
-         { steer: dmSteer('ArrowLeft', 'ArrowRight'), wheelie: keys.has('ArrowUp') ? 1 : -1 }]
-      : [inputFor(0)];
+    const mySlot = odm ? online.mySlot : 0;
+    let inputs;
+    if (two) inputs = [{ steer: dmSteer('KeyA', 'KeyD'), wheelie: keys.has('KeyW') ? 1 : -1 },
+                       { steer: dmSteer('ArrowLeft', 'ArrowRight'), wheelie: keys.has('ArrowUp') ? 1 : -1 }];
+    else if (odm) { inputs = []; inputs[mySlot] = inputFor(0); }
+    else inputs = [inputFor(0)];
     arenaWorld.update(dt, inputs);
     const dst = arenaWorld.S;
 
     // online deathmatch networking: stream my rider, detect my death, show result
     if (odm && net && online.active) {
-      const me = arenaWorld.riders[0];
+      const me = arenaWorld.riders[mySlot];
       online.sendT -= dt;
-      if (online.sendT <= 0) { online.sendT = 0.066; net.send({ t: 'dmState', x: me.x, z: me.z, h: me.heading, p: me.pitch, y: me.y, j: me.air > 0 ? 1 : 0, a: me.alive }); }
-      if (!online.raceOver && !me.alive) { online.raceOver = true; net.send({ t: 'dmDead' }); }
+      if (online.sendT <= 0) { online.sendT = 0.066; net.send({ t: 'st', slot: mySlot, x: me.x, z: me.z, h: me.heading, p: me.pitch, y: me.y, j: me.air > 0 ? 1 : 0, a: me.alive }); }
+      if (!online.raceOver && !me.alive) { online.raceOver = true; net.send({ t: 'dead', slot: mySlot }); }
       if (dst.over && !online.resultShown) {
         online.resultShown = true;
-        const win = dst.winner === 0;
+        const win = dst.winner === mySlot;
         setTimeout(() => {
           $('resultText').textContent = win ? 'YOU WIN!' : (dst.winner < 0 ? '무승부' : 'YOU LOSE');
           $('resultText').className = 'm-result ' + (win ? 'win' : 'lose');
@@ -1088,18 +1192,19 @@ function loop() {
     if (dst.over) {
       let txt, win = false;
       if (two) { txt = dst.winner < 0 ? '무승부' : `PLAYER ${dst.winner + 1} WIN!`; win = dst.winner >= 0; }
+      else if (odm) { win = dst.winner === mySlot; txt = win ? '승리!' : (dst.winner < 0 ? '무승부' : '패배'); }
       else { txt = dst.winner === 0 ? '승리!' : (dst.winner < 0 ? '무승부' : '패배'); win = dst.winner === 0; }
       els.dmBannerBig.textContent = txt;
       els.dmBanner.classList.toggle('win', win);
       els.dmBannerSub.textContent = `${dst.time.toFixed(1)}초${odm ? '' : ' · R 재시작'}`;
     }
-    // high-speed screen warp when wheelie-boosted
-    const r0 = arenaWorld.riders[0];
+    // high-speed screen warp when wheelie-boosted (my rider)
+    const r0 = arenaWorld.riders[mySlot];
     compositeMat.uniforms.uSpeedL.value = Math.min(1, Math.max(0, (r0.speed - DM.moveSpeed) / (DM.moveSpeed * (DM.wheelieMul - 1))));
     compositeMat.uniforms.uSpeedR.value = 0;
     compositeMat.uniforms.uFlashL.value.set(1, 1, 1, 0); compositeMat.uniforms.uFlashR.value.set(1, 1, 1, 0);
     renderer.setScissorTest(false);
-    renderer.setRenderTarget(rts[0]); renderer.clear(); renderer.render(arenaWorld.scene, arenaWorld.cameras[0]);
+    renderer.setRenderTarget(rts[0]); renderer.clear(); renderer.render(arenaWorld.scene, arenaWorld.cameras[mySlot]);
     if (two) { renderer.setRenderTarget(rts[1]); renderer.clear(); renderer.render(arenaWorld.scene, arenaWorld.cameras[1]); }
     renderer.setRenderTarget(null); renderer.clear(); renderer.render(quadScene, quadCam);
     drawCamOverlay();
