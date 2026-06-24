@@ -92,6 +92,11 @@
     #modeTag { position: fixed; bottom: 18px; left: 18px; z-index: 20;
       font-family: var(--font); font-size: 11px; color: var(--dim); }
     #modeTag b { color: var(--yellow); }
+    #motionDbg { position: fixed; bottom: 38px; left: 18px; z-index: 20; display: none;
+      font-family: var(--font); font-size: 11px; color: var(--cyan); letter-spacing: .04em; }
+    #motionDbg.on { display: block; }
+    #motionDbg b.no { color: #ff6a6a; }
+    #motionDbg b.ok { color: #7CFC9A; }
 
     /* webcam HUD */
     #camWrap { position: fixed; bottom: 12px; left: 50%; transform: translateX(-50%); z-index: 15;
@@ -201,6 +206,7 @@
 
   <button id="motionStart">▶ 모션 컨트롤 시작</button>
   <div id="modeTag">MODE <b id="modeTagVal">1P · KEYBOARD</b></div>
+  <div id="motionDbg"></div>
 
   <div id="camWrap">
     <video id="camFeed" autoplay playsinline muted></video>

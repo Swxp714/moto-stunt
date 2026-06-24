@@ -785,15 +785,25 @@ function kbPlayer(which) {
 }
 function dmSteer(l, r) { return (keys.has(l) ? -1 : 0) + (keys.has(r) ? 1 : 0); } // arena 2P steer
 
+let lastMotion = null;   // last computed motion controls (for the on-screen debug readout)
 function inputFor(which) {
   if (inputSource === 'motion' && tracker.ready) {
     const region = gameMode === '2P' ? (which === 0 ? 'left' : 'right') : 'all';
     const head = gameMode === '2P' ? 0 : (tracker.headYaw || 0); // head-look (single local view)
     const c = tracker.controls(region);
+    if (which === 0) lastMotion = c;
     if (c.present) return { steer: c.steer, wheelie: c.wheelie, head }; // wheelie signed (+up/-down)
     return { steer: 0, wheelie: -0.5, head };   // no hands -> ease front wheel down (safety)
   }
   return kbPlayer(which);
+}
+function updateMotionDbg() {
+  const el = document.getElementById('motionDbg');
+  if (inputSource !== 'motion') { el.classList.remove('on'); return; }
+  el.classList.add('on');
+  const c = lastMotion;
+  if (!c || !c.present) { el.innerHTML = '✋ <b class="no">손 미감지</b> — 양손을 카메라 안에'; return; }
+  el.innerHTML = `✋<b class="ok">${c.hands}</b>　조향<b>${(c.steer || 0).toFixed(2)}</b>　윌리<b>${(c.wheelie || 0).toFixed(2)}</b>`;
 }
 
 function setGameMode(mode) {
@@ -1254,6 +1264,7 @@ const clock = new THREE.Clock();
 function loop() {
   const dt = Math.min(clock.getDelta(), 0.05);
   if (inputSource === 'motion' && tracker.ready) tracker.detect(performance.now());
+  updateMotionDbg();
 
   // ---- TRAIL DEATHMATCH branch ----
   if ((gameMode === 'DM' || gameMode === 'DM2' || gameMode === 'DMO') && arenaWorld) {
