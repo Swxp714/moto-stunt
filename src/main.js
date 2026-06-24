@@ -398,7 +398,7 @@ function createWorld(bodyColor) {
 // D0: aerial arena + free-roam bike (heading/speed) + top-down chase camera
 // ---------------------------------------------------------------------------
 const DM = { moveSpeed: 34, turnRate: 2.6, arenaR: 95, startR: 42,
-  trailGap: 1.6, trailW: 1.2, trailH: 2.4, graceSegs: 6, trailMax: 120, // tail length cap (not infinite)
+  trailGap: 1.6, trailW: 1.2, trailH: 2.4, graceSegs: 6, trailMax: 55, // tail length cap (shorter)
   shrinkRate: 2.4, minR: 16, wheelieMul: 1.7,      // shrink rate; wheelie speed boost
   jumpPadR: 3.8, jumpTime: 0.85, jumpHeight: 7, jumpPads: 7 };  // jump ramps
 function createArenaWorld(riderDefs) {
@@ -481,13 +481,20 @@ function createArenaWorld(riderDefs) {
     return false;
   }
   function botSteer(r) {
-    const look = 9, fx = Math.sin(r.heading), fz = -Math.cos(r.heading);
-    if (!blockedAt(r, r.x + fx * look, r.z + fz * look, 1.2)) return 0;
-    for (const s of [1, -1, 2, -2]) {
-      const h = r.heading + s * 0.4;
-      if (!blockedAt(r, r.x + Math.sin(h) * look, r.z - Math.cos(h) * look, 1.2)) return Math.sign(s);
+    // cast rays at several angles, measure clearance, steer toward the openest (look ahead)
+    const angles = [0, 0.3, -0.3, 0.6, -0.6, 1.0, -1.0, 1.5, -1.5];
+    let best = -1e9, bestA = 0;
+    for (const da of angles) {
+      const h = r.heading + da, fx = Math.sin(h), fz = -Math.cos(h);
+      let clear = 0;
+      for (let step = 2; step <= 18; step += 2) {
+        if (blockedAt(r, r.x + fx * step, r.z + fz * step, 0.9)) break;
+        clear = step;
+      }
+      const score = clear - Math.abs(da) * 2.0;   // prefer straighter when clearance is similar
+      if (score > best) { best = score; bestA = da; }
     }
-    return 1;
+    return Math.max(-1, Math.min(1, bestA * 2.2));
   }
 
   // --- death explosion (shared pool) ---
