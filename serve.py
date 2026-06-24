@@ -13,8 +13,16 @@ class NoCacheHandler(http.server.SimpleHTTPRequestHandler):
         self.send_header('Expires', '0')
         super().end_headers()
 
+    def log_message(self, *a):
+        pass
+
+
+class Server(socketserver.ThreadingMixIn, http.server.HTTPServer):
+    daemon_threads = True
+    allow_reuse_address = True
+
 
 if __name__ == '__main__':
-    with socketserver.TCPServer(('127.0.0.1', PORT), NoCacheHandler) as httpd:
-        print(f'MOTO STUNT dev server (no-cache) → http://127.0.0.1:{PORT}')
+    with Server(('127.0.0.1', PORT), NoCacheHandler) as httpd:
+        print(f'MOTO STUNT dev server (no-cache, threaded) → http://127.0.0.1:{PORT}')
         httpd.serve_forever()

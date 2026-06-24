@@ -397,9 +397,10 @@ function createWorld(bodyColor) {
 // TRAIL DEATHMATCH — separate arena world factory (see docs/MODE_DEATHMATCH.md)
 // D0: aerial arena + free-roam bike (heading/speed) + top-down chase camera
 // ---------------------------------------------------------------------------
-const DM = { moveSpeed: 34, turnRate: 2.6, arenaR: 60,
-  trailGap: 1.6, trailW: 1.2, trailH: 2.4, graceSegs: 6,
-  shrinkRate: 2.2, minR: 12 };   // arena shrinks shrinkRate u/s down to minR
+const DM = { moveSpeed: 34, turnRate: 2.6, arenaR: 95, startR: 42,
+  trailGap: 1.6, trailW: 1.2, trailH: 2.4, graceSegs: 6, trailMax: 120, // tail length cap (not infinite)
+  shrinkRate: 2.4, minR: 16, wheelieMul: 1.7,      // shrink rate; wheelie speed boost
+  jumpPadR: 3.8, jumpTime: 0.85, jumpHeight: 7, jumpPads: 7 };  // jump ramps
 function createArenaWorld(riderDefs) {
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0x06080f);
@@ -423,9 +424,11 @@ function createArenaWorld(riderDefs) {
   // --- riders ---
   function makeRider(def, idx) {
     const bike = buildBike(def.color); scene.add(bike);
+    bike.rotation.order = 'YXZ';   // yaw (heading) then pitch (wheelie)
     return { idx, isBot: !!def.isBot, remote: !!def.remote, name: def.name, color: def.color, bike,
       trailMat: new THREE.MeshBasicMaterial({ color: def.color }), trailSegs: [], trailMeshes: [],
-      x: 0, z: 0, heading: 0, speed: DM.moveSpeed, alive: true, lastTX: 0, lastTZ: 0, trailInit: false,
+      x: 0, z: 0, heading: 0, pitch: 0, speed: DM.moveSpeed, alive: true, lastTX: 0, lastTZ: 0, trailInit: false,
+      air: 0, y: 0, head: 0, airFlag: false,   // jump timer / height / head-look / remote airborne
       tx: 0, tz: 0, th: 0 };   // remote target (network)
   }
   const riders = riderDefs.map((d, i) => makeRider(d, i));
@@ -438,6 +441,7 @@ function createArenaWorld(riderDefs) {
     mesh.position.set((x1 + x2) / 2, DM.trailH / 2, (z1 + z2) / 2);
     mesh.rotation.y = Math.atan2(dx, dz);
     scene.add(mesh); r.trailSegs.push({ x1, z1, x2, z2 }); r.trailMeshes.push(mesh);
+    if (r.trailSegs.length > DM.trailMax) { const old = r.trailMeshes.shift(); scene.remove(old); old.geometry.dispose(); r.trailSegs.shift(); }
   }
   function clearRiderTrail(r) { for (const m of r.trailMeshes) { scene.remove(m); m.geometry.dispose(); } r.trailMeshes.length = 0; r.trailSegs.length = 0; r.trailInit = false; }
   function emitTrail(r) {
@@ -449,6 +453,7 @@ function createArenaWorld(riderDefs) {
   function applyRemote(idx, s) {           // online: opponent state from network
     const r = riders[idx]; if (!r) return;
     if (s.x !== undefined) { r.tx = s.x; r.tz = s.z; r.th = s.h; }
+    if (s.p !== undefined) r.pitch = s.p;
     if (s.a === false && r.alive) { r.alive = false; r.bike.visible = false; spawnExplosion(r.x, 1.4, r.z); }
   }
 
@@ -505,12 +510,13 @@ function createArenaWorld(riderDefs) {
       const a = n > 1 ? (i * Math.PI * 2 / n) : 0, sr = n > 1 ? 26 : 0;
       r.x = Math.sin(a) * sr; r.z = Math.cos(a) * sr; r.heading = (n > 1 ? Math.PI / 2 - a : 0); // tangent (circle), single=forward
       r.alive = true; r.speed = DM.moveSpeed; r.trailInit = false; r.bike.visible = true;
+      r.pitch = 0; r.bike.rotation.x = 0;
       clearRiderTrail(r);
     });
     clearExplosion();
   }
   function positionAll(dt) {
-    for (const r of riders) { r.bike.position.set(r.x, 0, r.z); r.bike.rotation.y = -r.heading; }
+    for (const r of riders) { r.bike.position.set(r.x, 0, r.z); r.bike.rotation.y = -r.heading; r.bike.rotation.x = r.pitch || 0; }
     riders.forEach((r, i) => {
       const fx = Math.sin(r.heading), fz = -Math.cos(r.heading);
       cameras[i].position.lerp(new THREE.Vector3(r.x - fx * 11, 22, r.z - fz * 11), Math.min(1, dt * 5));
@@ -528,13 +534,20 @@ function createArenaWorld(riderDefs) {
         emitTrail(r);
         continue;
       }
-      const steer = r.isBot ? botSteer(r) : (((inputs && inputs[r.idx]) || {}).steer || 0);
+      const inp = (inputs && inputs[r.idx]) || {};
+      const steer = r.isBot ? botSteer(r) : (inp.steer || 0);
+      let dead = false, cause = '';
+      if (!r.isBot) {   // wheelie: hold to lift front wheel & boost speed; too high = flip
+        const w = inp.wheelie || 0;
+        r.pitch = Math.max(0, r.pitch + (w > 0 ? CFG.pitchRiseRate * w : CFG.pitchFallRate * w) * dt);
+        if (r.pitch > CFG.maxPitch) { dead = true; cause = '윌리 전복'; }
+      }
+      r.speed = DM.moveSpeed * (1 + (DM.wheelieMul - 1) * Math.min(1, r.pitch / CFG.maxPitch));
       r.heading += steer * DM.turnRate * dt;
       const fx = Math.sin(r.heading), fz = -Math.cos(r.heading);
       r.x += fx * r.speed * dt; r.z += fz * r.speed * dt;
 
-      let dead = false, cause = '';
-      if (Math.hypot(r.x, r.z) > arena.radius) { dead = true; cause = '경계 이탈'; }
+      if (!dead && Math.hypot(r.x, r.z) > arena.radius) { dead = true; cause = '경계 이탈'; }
       emitTrail(r);
       if (!dead) for (const rr of riders) {
         const skip = (rr === r) ? DM.graceSegs : 0;
@@ -1022,7 +1035,8 @@ function loop() {
   if ((gameMode === 'DM' || gameMode === 'DM2' || gameMode === 'DMO') && arenaWorld) {
     const two = gameMode === 'DM2', odm = gameMode === 'DMO';
     const inputs = two
-      ? [{ steer: dmSteer('KeyA', 'KeyD') }, { steer: dmSteer('ArrowLeft', 'ArrowRight') }]
+      ? [{ steer: dmSteer('KeyA', 'KeyD'), wheelie: keys.has('KeyW') ? 1 : -1 },
+         { steer: dmSteer('ArrowLeft', 'ArrowRight'), wheelie: keys.has('ArrowUp') ? 1 : -1 }]
       : [inputFor(0)];
     arenaWorld.update(dt, inputs);
     const dst = arenaWorld.S;
@@ -1031,7 +1045,7 @@ function loop() {
     if (odm && net && online.active) {
       const me = arenaWorld.riders[0];
       online.sendT -= dt;
-      if (online.sendT <= 0) { online.sendT = 0.066; net.send({ t: 'dmState', x: me.x, z: me.z, h: me.heading, a: me.alive }); }
+      if (online.sendT <= 0) { online.sendT = 0.066; net.send({ t: 'dmState', x: me.x, z: me.z, h: me.heading, p: me.pitch, a: me.alive }); }
       if (!online.raceOver && !me.alive) { online.raceOver = true; net.send({ t: 'dmDead' }); }
       if (dst.over && !online.resultShown) {
         online.resultShown = true;

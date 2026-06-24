@@ -33,6 +33,22 @@
 | ✅D4 | 봇(vs AI) + 로컬 2인 분할 | ✅ 봇 `dm_d4_bot`(AI 경계/트레일 회피·승자판정). ✅ 로컬2인 `dm_d4b_split`(gameMode 'DM2', 카메라2→좌/우 RT 분할, 빨강/파랑 틴트, P1 WASD·P2 화살표 독립, "PLAYER N WIN"). 멀티라이더 createArenaWorld(riderDefs) |
 | ✅D5 | 온라인(PeerJS): 위치+heading+트레일 동기, 사망 이벤트 | ✅ 격리검증 — 원격 라이더 applyRemote(위치 적용+트레일 재구성)+dmDead 사망+승자판정. net.js 재사용(메뉴 "데스매치 온라인"→gameType 'dm'→DMO). gameMode 'DMO' 단일카메라+12Hz dmState. ⚠️ 풀 2PC E2E는 실제 테스트 필요(헤드리스 2피어+웹캠 제약). 배포 HTTPS 권장 |
 
+## 🔧 확장 기획 (E1~E6) — 하나씩 개발 (유저 요청, 2026-06-24)
+
+> D0~D5 코어 완성 후 누적 요청. `/loop`로 한 페이즈씩 puppeteer 검증하며 진행.
+
+| E | 목표 | 상태 |
+|---|------|------|
+| **E1** | DM 코어 강화: **윌리**(속도부스트+과회전 전복) · **트레일 길이 제한**(trailMax 120) · **맵 확장**(arenaR 95) | 🔄 윌리/트레일/맵 ✅, startR 적용·검증 잔여 |
+| **E2** | **점프대**(밟으면 도약, 공중엔 트레일 통과+무적·트레일 끊김) + **3인칭 카메라**(탑뷰→체이스) | ⬜ |
+| **E3** | **데스매치 웹캠 조작**(모션 steer/윌리, 이미 inputFor 지원) + **고개 yaw 카메라 패닝** | ⬜ |
+| **E4** | **vs AI 8인**(봇7+나1, 배틀로얄식 마지막 생존) | ⬜ |
+| **E5** | **온라인 8인**: PeerJS **star 토폴로지**(호스트가 게스트들과 연결·전원 상태 릴레이). net.js 멀티커넥션 확장 | ⬜ (대형) |
+| **E6** | **TETR.IO식 우측 상대 미니뷰**(상대들 작은 화면/상태) — 레퍼런스 `Desktop/images.jpg` | ⬜ |
+
+- **튜닝 추가**: wheelieMul 1.7, trailMax 120, arenaR 95/startR 42/minR 16, jumpPadR 3.8/jumpTime 0.85/jumpHeight 7/jumpPads 7
+- **서버**: serve.py를 **ThreadingHTTPServer**로(단일스레드 행 방지)
+
 ## ✅ 트레일 데스매치 완성 (D0~D5, 2026-06-24)
 싱글(서바이벌)·vs AI 봇·로컬 2인 분할·온라인 2인(PeerJS) 전부 동작. 메뉴 4종 진입. 공중 아레나+축소+트레일 킬+사망폭발+경계경고+픽셀아트 재사용. `createArenaWorld(riderDefs)` 멀티라이더(human/bot/remote).
 
