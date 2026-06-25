@@ -128,8 +128,10 @@
       border: 0; padding: 13px 20px; min-width: 230px; cursor: pointer; letter-spacing: .03em;
       box-shadow: 0 0 0 3px #06060c, 0 0 0 6px var(--cyan); }
     .mbtn:hover { background: #9fe6ff; }
+    .mbtn:active { transform: translateY(2px); box-shadow: 0 0 0 3px #06060c, 0 0 0 4px var(--cyan); }
     .mbtn.ghost { background: transparent; color: var(--cyan); box-shadow: 0 0 0 3px var(--cyan); }
     .mbtn.ghost:hover { background: rgba(90,209,255,.15); }
+    .mbtn.ghost:active { transform: translateY(2px); box-shadow: 0 0 0 2px var(--cyan); }
     .mbtn.dmmode { display: flex; flex-direction: column; gap: 3px; padding: 10px 16px; }
     .mbtn.dmmode span { font-size: 10px; opacity: .8; font-weight: 400; }
     .m-row { display: flex; gap: 8px; align-items: center; }
@@ -182,6 +184,7 @@
     .seg { font-family: var(--font); font-size: 12px; color: var(--cyan); background: #0c1830; border: 2px solid var(--cyan);
       padding: 8px 14px; cursor: pointer; }
     .seg.on { background: var(--cyan); color: #04121c; }
+    .seg:active { transform: translateY(2px); }
     .setup-row b { font-size: 18px; color: #fff; min-width: 26px; text-align: center; }
     .hint2 { font-size: 10px; color: var(--dim); margin-left: 6px; }
     .setup-roster { display: flex; flex-wrap: wrap; gap: 6px; min-height: 28px; }
@@ -207,6 +210,21 @@
     .dm-survive b { font-size: 28px; color: var(--cyan); }
     #dmBanner .big { color: var(--red); }
     #dmBanner.win .big { color: var(--yellow); }
+    /* final standings panel */
+    #dmStandings { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); z-index: 4;
+      font-family: var(--font); display: none; padding: 22px 26px 18px; background: #0c1424;
+      box-shadow: 0 0 0 3px #06060c, 0 0 0 6px var(--cyan); min-width: 280px; }
+    #dmStandings.show { display: block; }
+    #dmStandings .title { font-size: 18px; color: var(--cyan); text-align: center; letter-spacing: .1em; margin-bottom: 16px; }
+    #dmStandings .srow { display: flex; gap: 10px; align-items: center; padding: 6px 10px; margin-bottom: 4px;
+      font-size: 13px; background: rgba(8,10,18,.55); box-shadow: 0 0 0 2px #06060c; }
+    #dmStandings .srow.win { box-shadow: 0 0 0 2px #06060c, 0 0 0 4px var(--yellow); }
+    #dmStandings .srow .rk { width: 18px; color: var(--dim); text-align: center; }
+    #dmStandings .srow.win .rk { color: var(--yellow); }
+    #dmStandings .srow .nm { font-weight: 700; }
+    #dmStandings .srow .sc { margin-left: auto; font-weight: 800; color: #fff; min-width: 28px; text-align: right; }
+    #dmStandings .srow.win .sc { color: var(--yellow); }
+    #dmStandings .hint { text-align: center; font-size: 10px; color: var(--dim); margin-top: 14px; letter-spacing: .05em; }
     /* score-mode: leaderboard + item slot */
     #dmScore { position: absolute; top: 14px; left: 14px; display: none; font-family: var(--font); font-size: 12px; }
     #hud.dm #dmScore { display: block; }
@@ -273,6 +291,7 @@
     <div id="dmItem"><div class="box" id="dmItemIcon">⤴️</div><div class="key">F</div></div>
     <div class="warn" id="dmWarn">! 경계 임박 !</div>
     <div class="banner" id="dmBanner"><div class="big" id="dmBannerBig">GAME OVER</div><div class="sub" id="dmBannerSub"></div></div>
+    <div id="dmStandings"><div class="title">FINAL STANDINGS</div><div id="dmStandingsRows"></div><div class="hint" id="dmStandingsHint">R 재시작</div></div>
 
     <div class="controls-help" id="helpText">← → 조향　↑ 윌리　R 리셋　1/2 인원　M 모션</div>
   </div>
