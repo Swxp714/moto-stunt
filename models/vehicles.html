@@ -62,7 +62,7 @@ VEHICLES.forEach((v, i) => {
   const g = v.build();
   g.userData.key = v.key;
   if (showRiders && v.seat) mountRider(g, v.seat, [0xf4ead6, 0xf2c0a0, 0xbcd6f0, 0xc8e8b0][i % 4]);
-  g.position.x = (i - (VEHICLES.length - 1) / 2) * spacing;
+  g.position.x = (i - (VEHICLES.length - 1) / 2) * spacing + (v.disp || 0);
   g.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
   scene.add(g); groups.push(g);
 });

@@ -3,7 +3,7 @@
 // roughly centered in XZ, ~3-4 units long. Built from the shared _kit helpers
 // so all four share the soft rounded matte "3D icon" look.
 import * as THREE from 'three';
-import { mat, rbox, ball, tube, cyl, wheel, at } from './_kit.js';
+import { mat, rbox, ball, tube, cyl, wheel, at, link } from './_kit.js';
 
 function buildScooter() {
   const g = new THREE.Group();
@@ -58,10 +58,10 @@ function buildScooter() {
   const boxLid = rbox(0.74, 0.12, 0.82, 0xdcc890, 0.06);
   g.add(at(boxLid, -0.85, 2.36, 0, 0, 0, 0));
 
-  // --- Wheels: fat dark tires, tan hubs (center y === tireR so they rest on y=0) ---
-  const frontWheel = wheel(0.5, 0.34, 0x2b2725, 0xc9a37a, { hubR: 0.18, knobby: true });
+  // --- Wheels: smooth fat scooter tires, tan hubs (center y === tireR rests on y=0) ---
+  const frontWheel = wheel(0.5, 0.34, 0x2b2725, 0xc9a37a, { hubR: 0.2, sides: 16 });
   g.add(at(frontWheel, 1.0, 0.5, 0));
-  const rearWheel = wheel(0.5, 0.34, 0x2b2725, 0xc9a37a, { hubR: 0.18, knobby: true });
+  const rearWheel = wheel(0.5, 0.34, 0x2b2725, 0xc9a37a, { hubR: 0.2, sides: 16 });
   g.add(at(rearWheel, -0.95, 0.5, 0));
 
   return g;
@@ -70,57 +70,42 @@ function buildScooter() {
 function buildDirtBike() {
   const g = new THREE.Group();
   const ORANGE = 0xf39320, BLACK = 0x2a2a2c, GRAY = 0x8a8a8e;
+  const R = 0.7;
 
-  // --- Wheels (big knobby, gray spoke hubs) rest on y=0 at center y=R ---
-  const R = 0.68;
-  const frontWheel = wheel(R, 0.34, BLACK, 0xb9b9bd, { knobby: true, spokes: true });
-  const rearWheel  = wheel(R, 0.34, BLACK, 0xb9b9bd, { knobby: true, spokes: true });
-  g.add(at(frontWheel,  1.35, R, 0));
-  g.add(at(rearWheel,  -1.35, R, 0));
+  // --- Wheels: big knobby, gray spoke hubs (center y = R rests on y=0) ---
+  g.add(at(wheel(R, 0.34, BLACK, 0xb9b9bd, { knobby: true, spokes: true }),  1.3, R, 0));
+  g.add(at(wheel(R, 0.34, BLACK, 0xb9b9bd, { knobby: true, spokes: true }), -1.3, R, 0));
 
-  // --- Front forks: two parallel gray tubes from headstem down to front wheel ---
-  const forkLen = 1.5;
-  g.add(at(tube(forkLen, 0.07, GRAY),  1.18, R + 0.55,  0.16, 0, 0, -28));
-  g.add(at(tube(forkLen, 0.07, GRAY),  1.18, R + 0.55, -0.16, 0, 0, -28));
-  // Headstem hub where forks meet (axis along Z, lined up over the forks)
-  g.add(at(cyl(0.1, 0.1, 0.4, GRAY), 1.18, R + 1.15, 0, 90, 0, 0));
+  // --- Gray frame: low spine + engine block + swingarm + forks (all connected) ---
+  g.add(at(rbox(1.9, 0.22, 0.3, GRAY), 0.0, R + 0.32, 0, 0, 0, 3));        // backbone spine
+  g.add(at(rbox(0.7, 0.6, 0.5, GRAY), 0.05, R + 0.0, 0));                  // engine block low-center
+  g.add(at(tube(1.1, 0.08, GRAY), -0.72, R + 0.08, 0.15, 0, 0, 80));       // swingarm to rear wheel
+  g.add(at(tube(1.45, 0.07, GRAY), 1.02, R + 0.5, 0.15, 0, 0, -24));       // front fork L
+  g.add(at(tube(1.45, 0.07, GRAY), 1.02, R + 0.5, -0.15, 0, 0, -24));      // front fork R
 
-  // --- Engine block: gray boxy lump low in the middle ---
-  g.add(at(rbox(0.85, 0.7, 0.55, GRAY, 0.14), -0.1, R + 0.1, 0));
+  // --- Fuel tank: orange, sitting on the spine ---
+  g.add(at(rbox(0.85, 0.5, 0.58, ORANGE), 0.18, R + 0.72, 0));
 
-  // --- Swingarm tube to rear wheel ---
-  g.add(at(tube(1.3, 0.07, GRAY), -0.75, R + 0.18, 0.18, 0, 0, 78));
+  // --- Seat: black, flat, from the tank back to the tail (connected) ---
+  g.add(at(rbox(1.25, 0.2, 0.5, BLACK), -0.55, R + 0.78, 0, 0, 0, 6));
 
-  // --- Main frame backbone (gray) tying headstem to tail ---
-  g.add(at(tube(1.9, 0.08, GRAY), 0.25, R + 0.85, 0, 0, 0, 70));
+  // --- Rear fender / tail: orange, upswept, touching the seat ---
+  g.add(at(rbox(0.92, 0.22, 0.52, ORANGE), -1.12, R + 0.98, 0, 0, 0, 20));
 
-  // --- Fuel tank: orange rounded, mid-upper ---
-  g.add(at(rbox(0.95, 0.55, 0.65, ORANGE, 0.22), 0.35, R + 0.95, 0));
+  // --- Front fender: orange over the front wheel ---
+  g.add(at(rbox(0.72, 0.16, 0.46, ORANGE), 1.32, R + 0.46, 0, 0, 0, -12));
 
-  // --- Seat: black long flat, rising slightly to tail ---
-  g.add(at(rbox(1.45, 0.22, 0.5, BLACK, 0.1), -0.55, R + 1.0, 0, 0, 0, 7));
+  // --- Front number plate: small, mounted on the forks facing forward ---
+  g.add(at(rbox(0.14, 0.46, 0.46, ORANGE), 0.98, R + 0.9, 0, 0, 0, 16));
 
-  // --- Rear fender / tail: orange, kicks UP at the back ---
-  g.add(at(rbox(1.0, 0.18, 0.55, ORANGE, 0.16), -1.35, R + 1.25, 0, 0, 0, 22));
-  // Tail tip flourish
-  g.add(at(rbox(0.4, 0.15, 0.5, ORANGE, 0.14), -1.85, R + 1.5, 0, 0, 0, 30));
+  // --- Headstem + handlebar at the top of the forks, with grips ---
+  g.add(at(cyl(0.08, 0.08, 0.3, GRAY, { sides: 6 }), 0.78, R + 1.0, 0, 90, 0, 0));
+  g.add(at(tube(0.82, 0.05, GRAY), 0.72, R + 1.12, 0, 90, 0, 0));
+  g.add(at(tube(0.2, 0.07, BLACK), 0.72, R + 1.12,  0.42, 90, 0, 0));
+  g.add(at(tube(0.2, 0.07, BLACK), 0.72, R + 1.12, -0.42, 90, 0, 0));
 
-  // --- Front fender: orange over front wheel ---
-  g.add(at(rbox(0.8, 0.16, 0.5, ORANGE, 0.16), 1.45, R + 0.62, 0, 0, 0, -10));
-
-  // --- Front number plate: orange rounded rect, tilted, front above wheel ---
-  g.add(at(rbox(0.55, 0.6, 0.12, ORANGE, 0.2), 1.55, R + 1.0, 0, 0, 0, 22));
-
-  // --- Handlebar: gray bar high above forks (axis along Z) ---
-  g.add(at(tube(0.95, 0.05, GRAY), 1.1, R + 1.35, 0, 90, 0, 0));
-  // Stem riser connecting bar to headstem
-  g.add(at(tube(0.3, 0.05, GRAY), 1.14, R + 1.25, 0));
-  // Dark grips on the bar ends (axis along Z, matching the bar)
-  g.add(at(tube(0.22, 0.07, BLACK), 1.1, R + 1.35,  0.5, 90, 0, 0));
-  g.add(at(tube(0.22, 0.07, BLACK), 1.1, R + 1.35, -0.5, 90, 0, 0));
-
-  // --- Exhaust pipe: gray cylinder running back along the side ---
-  g.add(at(cyl(0.09, 0.11, 1.1, GRAY), -0.9, R + 0.35, 0.28, 0, 0, 82));
+  // --- Exhaust pipe along the side ---
+  g.add(at(cyl(0.08, 0.1, 1.0, GRAY, { sides: 6 }), -0.8, R + 0.28, 0.26, 0, 0, 80));
 
   return g;
 }
@@ -219,37 +204,50 @@ function buildWheelbarrow() {
 // ---- Rider: a doodle "marshmallow" character in a seated riding pose --------
 // Origin (0,0,0) is the seat contact (butt). Faces +X. Place it on a kart's
 // seat anchor with mountRider(). bodyColor lets each player be tinted.
-function buildRider(bodyColor = 0xf4ead6) {
+// gripL (optional) = {x,y,z} hand target in rider-local space; arms link
+// shoulder -> grip so the hands always reach the bars (nothing floats).
+function buildRider(bodyColor = 0xf4ead6, pose = 'sit', gripL = null) {
   const g = new THREE.Group();
   const DARK = 0x2f2a28;
+  const push = pose === 'push';
+  const eyes = (y) => { g.add(at(rbox(0.05, 0.16, 0.05, DARK), 0.3, y, 0.12)); g.add(at(rbox(0.05, 0.16, 0.05, DARK), 0.3, y, -0.12)); };
 
-  // torso + head fused into one rounded marshmallow block
-  g.add(at(rbox(0.6, 0.88, 0.5, bodyColor, 0.27), 0.02, 0.48, 0));
+  if (push) {
+    g.add(at(rbox(0.58, 0.86, 0.48, bodyColor), 0.0, 1.05, 0));   // torso+head
+    eyes(1.2);
+    // legs straight down to the ground + feet
+    g.add(at(tube(0.74, 0.06, DARK), 0.0, 0.34, 0.15));
+    g.add(at(tube(0.74, 0.06, DARK), 0.0, 0.34, -0.15));
+    g.add(at(rbox(0.22, 0.1, 0.15, DARK), 0.08, 0.05, 0.15));
+    g.add(at(rbox(0.22, 0.1, 0.15, DARK), 0.08, 0.05, -0.15));
+  } else {
+    g.add(at(rbox(0.6, 0.88, 0.5, bodyColor), 0.02, 0.48, 0));    // torso+head
+    eyes(0.62);
+    // legs: thigh forward, shin down, little feet (rest on the pegs)
+    g.add(at(tube(0.5, 0.06, DARK), 0.28, 0.06, 0.17, 0, 0, -74));
+    g.add(at(tube(0.5, 0.06, DARK), 0.28, 0.06, -0.17, 0, 0, -74));
+    g.add(at(tube(0.44, 0.06, DARK), 0.52, -0.2, 0.17));
+    g.add(at(tube(0.44, 0.06, DARK), 0.52, -0.2, -0.17));
+    g.add(at(rbox(0.2, 0.1, 0.14, DARK), 0.58, -0.42, 0.17));
+    g.add(at(rbox(0.2, 0.1, 0.14, DARK), 0.58, -0.42, -0.17));
+  }
 
-  // two simple vertical "line" eyes on the front (+X) face
-  const eye = (z) => at(new THREE.Mesh(new THREE.CapsuleGeometry(0.045, 0.11, 3, 8), mat(DARK)), 0.31, 0.62, z);
-  g.add(eye(0.12)); g.add(eye(-0.12));
-
-  // thin dark arms reaching forward-down toward the handlebars + ball hands
-  g.add(at(tube(0.62, 0.057, DARK), 0.34, 0.52, 0.27, 0, 0, -56));
-  g.add(at(tube(0.62, 0.057, DARK), 0.34, 0.52, -0.27, 0, 0, -56));
-  g.add(at(ball(0.075, DARK), 0.62, 0.36, 0.3));
-  g.add(at(ball(0.075, DARK), 0.62, 0.36, -0.3));
-
-  // legs: thigh forward, shin down, little feet (rests on the pegs)
-  g.add(at(tube(0.5, 0.06, DARK), 0.28, 0.06, 0.17, 0, 0, -74)); // thigh forward
-  g.add(at(tube(0.5, 0.06, DARK), 0.28, 0.06, -0.17, 0, 0, -74));
-  g.add(at(tube(0.44, 0.06, DARK), 0.52, -0.2, 0.17));           // shin down
-  g.add(at(tube(0.44, 0.06, DARK), 0.52, -0.2, -0.17));
-  g.add(at(rbox(0.2, 0.1, 0.14, DARK, 0.05), 0.58, -0.42, 0.17));
-  g.add(at(rbox(0.2, 0.1, 0.14, DARK, 0.05), 0.58, -0.42, -0.17));
-
+  // arms link the shoulders to the grip target (no floating). Fallback: short rest arms.
+  const shY = push ? 1.32 : 0.66, shZ = 0.26;
+  for (const s of [1, -1]) {
+    const sh = new THREE.Vector3(0.06, shY, shZ * s);
+    const gp = gripL ? new THREE.Vector3(gripL.x, gripL.y, Math.abs(gripL.z) * s)
+                     : new THREE.Vector3(0.5, push ? shY : 0.34, 0.32 * s);
+    g.add(link(sh, gp, 0.057, DARK));
+    g.add(at(rbox(0.13, 0.13, 0.13, DARK), gp.x, gp.y, gp.z));   // blocky hand on the grip
+  }
   return g;
 }
 
-// mount a rider onto a vehicle group at its seat anchor; returns the rider
+// mount a rider onto a vehicle at its seat anchor (with grip target); returns it
 function mountRider(vehicleGroup, seat, bodyColor) {
-  const r = buildRider(bodyColor);
+  const gripL = seat.grip ? { x: seat.grip.x - seat.x, y: seat.grip.y - seat.y, z: seat.grip.z } : null;
+  const r = buildRider(bodyColor, seat.pose || 'sit', gripL);
   at(r, seat.x, seat.y, seat.z, 0, 0, seat.lean || 0);
   if (seat.scale) r.scale.setScalar(seat.scale);
   vehicleGroup.add(r);
@@ -259,8 +257,8 @@ function mountRider(vehicleGroup, seat, bodyColor) {
 export { buildScooter, buildDirtBike, buildSportBike, buildWheelbarrow, buildRider, mountRider };
 
 export const VEHICLES = [
-  { key: 'scooter',     name: '배달 스쿠터',  build: buildScooter,     seat: { x: -0.35, y: 1.42, z: 0, lean: -4 } },
-  { key: 'dirtbike',    name: '더트바이크',    build: buildDirtBike,    seat: { x: -0.45, y: 1.86, z: 0, lean: -8 } },
-  { key: 'sportbike',   name: '스포츠바이크',  build: buildSportBike,   seat: { x: -0.55, y: 1.34, z: 0, lean: 12 } },
-  { key: 'wheelbarrow', name: '손수레',        build: buildWheelbarrow, seat: { x: 0.3,  y: 1.5,  z: 0, lean: -2, scale: 0.92 } },
+  { key: 'scooter',     name: '배달 스쿠터',  build: buildScooter,     seat: { x: -0.35, y: 1.42, z: 0, grip: { x: 0.74, y: 1.78, z: 0.34 } } },
+  { key: 'dirtbike',    name: '더트바이크',    build: buildDirtBike,    seat: { x: -0.4,  y: 1.62, z: 0, grip: { x: 0.72, y: 1.82, z: 0.42 } } },
+  { key: 'sportbike',   name: '스포츠바이크',  build: buildSportBike,   seat: { x: -0.05, y: 1.32, z: 0, grip: { x: 1.12, y: 1.36, z: 0.32 } } },
+  { key: 'wheelbarrow', name: '손수레',        build: buildWheelbarrow, disp: 1.0, seat: { pose: 'push', x: -2.25, y: 0, z: 0, grip: { x: -1.6, y: 1.32, z: 0.42 } } },
 ];
