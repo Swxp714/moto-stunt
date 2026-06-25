@@ -110,5 +110,9 @@ try {
   }
 } catch (e) { /* ignore */ }
 
-export { play, init };
-export default { play, init };
+/** Set master volume 0..1 (scales every sound via ZzFX zzfxV). */
+function setVolume(v) { zzfxV = Math.max(0, Math.min(1, v)); }
+function getVolume() { return zzfxV; }
+
+export { play, init, setVolume, getVolume };
+export default { play, init, setVolume, getVolume };

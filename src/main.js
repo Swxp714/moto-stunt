@@ -1588,10 +1588,19 @@ $('btnStartMatch').onclick = () => {
 $('btnBackMain').onclick = () => { teardownOnline(); showScreen('play'); };
 // main-screen side boxes: mute toggle + controls help
 window.__muted = false;
-$('sideLeft').onclick = () => {
+$('sideLeft').onclick = () => $('soundOverlay').classList.remove('hidden');
+$('soundClose').onclick = () => $('soundOverlay').classList.add('hidden');
+$('volSlider').oninput = (e) => { const v = +e.target.value; $('volVal').textContent = v; sfx.setVolume(v / 100); if (!window.__muted) sfx.play('ui_move'); };
+$('muteBtn').onclick = () => {
   window.__muted = !window.__muted;
+  $('muteBtn').textContent = window.__muted ? '🔇 음소거됨 — 해제' : '음소거';
   $('sideLeft').textContent = window.__muted ? '🔇' : '🔊';
   $('sideLeft').classList.toggle('muted', window.__muted);
+};
+$('btnExit').onclick = () => {
+  if (!confirm('게임을 종료할까요?')) return;
+  try { window.open('', '_self'); window.close(); } catch (e) {}
+  document.body.innerHTML = '<div style="position:fixed;inset:0;display:flex;flex-direction:column;gap:14px;align-items:center;justify-content:center;background:#06080f;color:#5ad1ff;font-family:Galmuri11,monospace;font-size:22px;">또 만나요! 👋<div style="font-size:12px;color:#8aa0c0">탭을 닫아 종료하세요</div></div>';
 };
 $('sideRight').onclick = () => $('helpOverlay').classList.remove('hidden');
 $('helpClose').onclick = () => $('helpOverlay').classList.add('hidden');
