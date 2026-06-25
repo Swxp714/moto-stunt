@@ -100,6 +100,7 @@ function buildRoad() {
 //   bodyColor: vehicle body tint;  opts: { vehicle: key, rider: riderColor }
 function buildBike(bodyColor, opts = {}) {
   const pivot = new THREE.Group();
+  pivot.rotation.order = 'YXZ';   // yaw (steer) -> pitch (wheelie) -> roll (lean)
   const inner = buildVehicleModel(opts.vehicle || DEFAULT_VEHICLE, bodyColor, opts.rider);
   pivot.add(inner);
   // collect wheel groups so the game can spin them (about their local Z axle)
@@ -276,7 +277,7 @@ function createWorld(bodyColor) {
 
   const camera = new THREE.PerspectiveCamera(62, 1, 0.1, 1000);
 
-  const game = { state: STATE.RIDING, distance: 0, laneX: 0, pitch: 0, speed: CFG.baseSpeed,
+  const game = { state: STATE.RIDING, distance: 0, laneX: 0, pitch: 0, turn: 0, speed: CFG.baseSpeed,
     crashTimer: 0, invincible: 0, crashTilt: 0, startTime: performance.now(), finishTime: 0 };
   const fx = { flash: 0, flashColor: new THREE.Color(1, 1, 1), shake: 0 }; // screen effects
   const baseFov = 62;
@@ -285,7 +286,7 @@ function createWorld(bodyColor) {
 
   function reset() {
     Object.assign(game, { state: STATE.RIDING, distance: 0, laneX: 0, pitch: 0, speed: CFG.baseSpeed,
-      crashTimer: 0, invincible: 0, crashTilt: 0, startTime: performance.now(), finishTime: 0, frozen: false });
+      turn: 0, crashTimer: 0, invincible: 0, crashTilt: 0, startTime: performance.now(), finishTime: 0, frozen: false });
     fx.flash = 0; fx.shake = 0; camera.fov = baseFov; camera.updateProjectionMatrix();
     history.length = 0; respawnDist = 0; respawnLane = 0;
     clearFireworks(); clearOpponent();
@@ -358,7 +359,12 @@ function createWorld(bodyColor) {
     }
 
     bike.position.set(game.laneX, 0, -game.distance);
+    // steer turns the nose (yaw) and leans the bike into the turn instead of a flat slide
+    const steerNow = game.state === STATE.RIDING ? (input.steer || 0) : 0;
+    game.turn += (steerNow - game.turn) * Math.min(1, dt * 9);
     bike.rotation.x = game.state === STATE.CRASHED ? game.pitch + game.crashTilt : game.pitch;
+    bike.rotation.y = -game.turn * 0.5;    // nose yaws toward the steer direction
+    bike.rotation.z = -game.turn * 0.42;   // lean into the turn
     bike.visible = !(game.invincible > 0 && Math.floor(performance.now() / 90) % 2 === 0);
     for (const wm of bike.userData.wheels) wm.rotation.z -= game.speed * dt * 0.6;
 
