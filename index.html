@@ -64,6 +64,18 @@
     .banner .sub { font-size: 14px; color: var(--dim); margin-top: 12px; }
     #finishBanner .big { color: var(--yellow); }
 
+    /* floating kill/death score popup */
+    .dm-pop { position: absolute; left: 50%; top: 40%; pointer-events: none; z-index: 30;
+      font-family: var(--font); font-size: 42px; font-weight: 800; letter-spacing: .02em;
+      text-shadow: 2px 2px 0 #06060c, -2px 2px 0 #06060c, 2px -2px 0 #06060c, -2px -2px 0 #06060c;
+      animation: dmPopRise .9s ease-out forwards; }
+    .dm-pop.plus { color: var(--green); }
+    .dm-pop.minus { color: var(--red); }
+    @keyframes dmPopRise {
+      0%   { opacity: 0; transform: translate(-50%, 14px) scale(.6); }
+      18%  { opacity: 1; transform: translate(-50%, -6px) scale(1.15); }
+      100% { opacity: 0; transform: translate(-50%, -64px) scale(1); } }
+
     .controls-help { position: absolute; bottom: 16px; left: 50%; transform: translateX(-50%);
       font-size: 11px; color: var(--dim); letter-spacing: .02em; text-align: center; }
 

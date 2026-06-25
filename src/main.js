@@ -686,12 +686,12 @@ function createArenaWorld(riderDefs, modeKey = 'score') {
   function applyDeath(r, killerIdx, cause) {
     if (!r.alive) return;
     r.score -= 1;
-    if (killerIdx >= 0 && killerIdx !== r.idx && riders[killerIdx]) { riders[killerIdx].score += DM.killScore; if (killerIdx === 0) sfx.play('kill'); }
+    if (killerIdx >= 0 && killerIdx !== r.idx && riders[killerIdx]) { riders[killerIdx].score += DM.killScore; if (killerIdx === 0) { sfx.play('kill'); scorePop('+' + DM.killScore, 'plus'); } }
     r.alive = false; r.bike.visible = false; r.boost = 0; r.shield = 0; r.lastKiller = killerIdx;
     r.lives = Math.max(0, r.lives - 1);              // Infinity-1 = Infinity (score mode)
     r.respawnT = r.lives > 0 ? DM.respawnDelay : 0;  // 0 lives -> eliminated (no respawn)
     spawnExplosion(r.x, 1.4, r.z); clearRiderTrail(r);
-    if (r.idx === 0) { S.cause = cause; sfx.play('dm_death'); }
+    if (r.idx === 0) { S.cause = cause; sfx.play('dm_death'); scorePop('-1', 'minus'); }
   }
   function topScorer() {
     let best = -1e9, bi = -1;
@@ -1029,6 +1029,7 @@ const els = {
   dmStandingsHint: document.getElementById('dmStandingsHint'),
   modeTagVal: document.getElementById('modeTagVal'),
   finishBanner: document.getElementById('finishBanner'), finishBig: document.getElementById('finishBig'), finishSub: document.getElementById('finishSub'),
+  hud: document.getElementById('hud'),
 };
 let winner = null; // for 2P
 function updateModeTag() {
@@ -1074,6 +1075,14 @@ function showDmStandings(aw, mySlot, winner, showHint) {
   els.dmStandings.classList.add('show');
 }
 function hideDmStandings() { els.dmStandings.classList.remove('show'); }
+let popTimer = 0;
+function scorePop(text, kind) {   // floating +2 / -1 feedback for the local player
+  const el = document.createElement('div');
+  el.className = 'dm-pop ' + kind; el.textContent = text;
+  el.style.top = (38 + (popTimer++ % 3) * 5) + '%';   // stagger rapid pops so they don't overlap
+  els.hud.appendChild(el);
+  setTimeout(() => el.remove(), 950);
+}
 function showFinish(big, sub) { els.finishBig.textContent = big; els.finishSub.textContent = sub; els.finishBanner.classList.add('show'); }
 function hideFinish() { els.finishBanner.classList.remove('show'); }
 
