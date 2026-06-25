@@ -137,9 +137,9 @@
       66%  { transform: translate(.3px,.45px) rotate(-.08deg); }
       100% { transform: translate(.45px,-.4px) rotate(-.2deg); }
     }
-    .m-screen:not([hidden]):not(.slidein), .help-card, .play-panel, .setup-panel,
-    .side-box, #dmScore, #dmStandings, #dmItem, #dmHud, .banner {
-      animation: wiggle .27s steps(1) infinite; }
+    /* still by default; tremble (부들부들) only on hover */
+    .mbtn:hover, .seg:hover, .side-box:hover, .rchip:hover, .ks-chip:hover, .ks-sw div:hover, .pcard:hover {
+      animation: wiggle .24s steps(1) infinite; }
     .m-title { font-size: 38px; color: var(--cyan); letter-spacing: .06em; margin-bottom: 6px; text-shadow: 4px 4px 0 #06283a; }
     .m-sub { font-size: 11px; color: var(--dim); margin-top: -10px; margin-bottom: 14px; letter-spacing: .1em; }
     .m-screen { display: flex; flex-direction: column; align-items: center; gap: 12px; }

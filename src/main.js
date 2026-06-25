@@ -494,7 +494,7 @@ function createArenaWorld(riderDefs, modeKey = 'score') {
     flame.rotation.x = Math.PI / 2; flame.position.set(0, 0.7, 2.0); flame.visible = false; bike.add(flame);  // +Z = behind (bike faces -Z)
     // gold crown for the current leader (1등), floats above the rider's head
     const crown = new THREE.Group();
-    const goldMat = new THREE.MeshStandardMaterial({ color: 0xffd23a, roughness: 0.35, metalness: 0.4 });
+    const goldMat = new THREE.MeshStandardMaterial({ color: 0xffe000, emissive: 0x6b5800, emissiveIntensity: 0.6, roughness: 0.3, metalness: 0.3 });
     const band = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.5, 0.28, 8), goldMat); crown.add(band);
     for (let kk = 0; kk < 5; kk++) { const a = kk / 5 * Math.PI * 2; const sp = new THREE.Mesh(new THREE.ConeGeometry(0.12, 0.34, 6), goldMat); sp.position.set(Math.cos(a) * 0.46, 0.28, Math.sin(a) * 0.46); crown.add(sp); }
     crown.position.y = 3.5; crown.visible = false; bike.add(crown);
@@ -1191,7 +1191,7 @@ function closeMenu() { inMenu = false; menuEl.classList.add('hidden'); hud.class
 const heroCanvas = document.getElementById('heroCanvas');
 const fadeOverlay = document.getElementById('fadeOverlay');
 const HERO_COLORS = [0xe8842a, 0xe14b4b, 0x4b86e1, 0x49b96a, 0x9b59d0, 0xf2c53d];
-let heroR, heroScene, heroCam, heroKart, heroRAF, heroOn = false, heroPlay, heroHover = false, heroFly = 0, heroSpk = null;
+let heroR, heroScene, heroCam, heroKart, heroRAF, heroOn = false, heroPlay, heroHover = false, heroFly = 0, heroTremble = 0, heroSpk = null;
 // build a text plane from a 2D canvas (pixelated along with everything else)
 function heroText(text, { fs = 110, color = '#ffffff', shadow = null, h = 1 } = {}) {
   const c = document.createElement('canvas'), ctx = c.getContext('2d'), pad = 24;
@@ -1261,18 +1261,24 @@ function heroPoint(e, click) {
 heroCanvas.addEventListener('pointermove', e => heroPoint(e, false));
 heroCanvas.addEventListener('click', e => heroPoint(e, true));
 let transitioning = false;
-function startMainTransition() {   // PLAY: kart zooms off to the right, next UI slides in from that side
-  if (transitioning) return; transitioning = true; heroFly = 1;
+function startMainTransition() {   // PLAY: bike trembles, pops a wheelie, then zooms off; next UI slides in
+  if (transitioning) return; transitioning = true; heroTremble = 0.45;
+  setTimeout(() => { heroTremble = 0; heroFly = 1; }, 450);   // tremble -> wheelie launch
   setTimeout(() => {
     showScreen('play');
     const ps = menuEl.querySelector('.m-screen[data-s="play"]');
     if (ps) { ps.classList.add('slidein'); setTimeout(() => ps.classList.remove('slidein'), 460); }
-    transitioning = false; heroFly = 0;
-  }, 360);
+    heroTremble = 0; heroFly = 0; transitioning = false;
+  }, 860);
 }
 function heroLoop() {
   if (!heroOn) return;
-  if (heroFly) { if (heroKart) { heroKart.rotation.y = 0; heroKart.rotation.z = Math.min(0.8, heroKart.rotation.z + 0.07); heroKart.position.x += 0.95; } }   // 윌리(앞바퀴 들고) 하며 오른쪽으로 쓩~
+  if (heroTremble > 0) {   // 부들부들 — rev/anticipation before the wheelie
+    heroTremble -= 0.016;
+    if (heroKart) { heroKart.rotation.y = 0; heroKart.position.set((Math.random() - 0.5) * 0.32, 0.4 + (Math.random() - 0.5) * 0.12, 0); heroKart.rotation.z = (Math.random() - 0.5) * 0.13; }
+  } else if (heroFly) {   // 윌리(앞바퀴 들고) 한 상태로 오른쪽으로 쭉 쓩~
+    if (heroKart) { heroKart.rotation.y = 0; heroKart.position.y = 0.4; heroKart.rotation.z = Math.min(0.9, heroKart.rotation.z + 0.09); heroKart.position.x += 1.0; }
+  }
   if (heroSpk) {
     if (heroFly && heroKart) for (let s = 0; s < 4; s++) {   // spew sparks from the rear wheel while flying off
       const i = heroSpk.i; heroSpk.i = (heroSpk.i + 1) % heroSpk.N;
@@ -1296,7 +1302,7 @@ function heroLoop() {
 }
 function showHero(on) {
   if (on && !heroR) { initHero(); rollHero(); }
-  else if (on && !heroOn) { heroFly = 0; rollHero(); }   // fresh kart each time the main screen opens
+  else if (on && !heroOn) { heroFly = 0; heroTremble = 0; transitioning = false; rollHero(); }   // fresh kart each time the main screen opens
   heroOn = on; heroHover = false;
   if (on) { resizeHero(); cancelAnimationFrame(heroRAF); heroLoop(); }
   else if (heroRAF) cancelAnimationFrame(heroRAF);
