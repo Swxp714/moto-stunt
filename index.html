@@ -300,6 +300,9 @@
       border: 3px solid #ffd23f; box-shadow: 0 0 16px rgba(255,210,63,.5); display: flex; align-items: center;
       justify-content: center; font-size: 32px; }
     #dmItem .key { font-size: 11px; color: #ffd23f; font-weight: 700; letter-spacing: .05em; }
+    #dmItemIcon img.item-img { width: 52px; height: 52px; object-fit: contain; image-rendering: auto; }
+    #dmItem.rolling .box { animation: itemShake .08s steps(2) infinite; box-shadow: 0 0 22px rgba(255,210,63,.95); }
+    @keyframes itemShake { 0% { transform: translate(-1.5px,-1px); } 50% { transform: translate(1.5px,1px); } }
 
     /* TETR.IO-style opponent mini-views (right column) */
     #miniViews { position: fixed; inset: 0; z-index: 12; pointer-events: none; display: none; }

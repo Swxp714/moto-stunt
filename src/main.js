@@ -9,6 +9,7 @@ import { makeBayerTexture } from './pixelart.js';
 import { Net } from './net.js';
 import { VEHICLES, mountRider } from '../models/vehicles.js';
 import { at } from '../models/_kit.js';
+import { buildItemModel, ITEM_KEYS } from '../models/items.js';
 import { openKartSelect } from './kartselect.js';
 import sfx from './sfx.js';
 // click sound on any pixel button / segment / chip (one delegated listener)
@@ -1068,6 +1069,54 @@ function updateModeTag() {
   els.modeTagVal.textContent = `${gameMode} · ${inputSource.toUpperCase()}`;
 }
 const ITEM_ICON = { jump: '⤴️', boost: '💨', shield: '🛡️', super: '🔥' };
+// 3D item models pre-rendered to data-URLs — used as HUD icons + the slot-machine reel.
+// Rendered with the MAIN renderer into an offscreen RT (reliable; a separate
+// WebGL context was flaky at startup) then read back to a 2D canvas.
+const ITEM_IMG = {};
+function renderItemIcons() {
+  try {
+    if (!renderer) return;
+    const S = 132;
+    const rt = new THREE.WebGLRenderTarget(S, S);
+    const sc = new THREE.Scene();
+    sc.add(new THREE.HemisphereLight(0xffffff, 0x3a4252, 1.2));
+    const k = new THREE.DirectionalLight(0xffffff, 1.8); k.position.set(2, 4, 5); sc.add(k);
+    const cam = new THREE.PerspectiveCamera(38, 1, 0.1, 100); cam.position.set(0.7, 0.5, 3.1); cam.lookAt(0, 0, 0);
+    const buf = new Uint8Array(S * S * 4);
+    const cnv = document.createElement('canvas'); cnv.width = S; cnv.height = S;
+    const ctx = cnv.getContext('2d'); const img = ctx.createImageData(S, S);
+    const prevRT = renderer.getRenderTarget();
+    for (const key of ITEM_KEYS) {
+      const m = buildItemModel(key); sc.add(m);
+      renderer.setRenderTarget(rt); renderer.clear(); renderer.render(sc, cam);
+      renderer.readRenderTargetPixels(rt, 0, 0, S, S, buf);
+      for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {   // flip Y (GL origin = bottom-left)
+        const si = ((S - 1 - y) * S + x) * 4, di = (y * S + x) * 4;
+        img.data[di] = buf[si]; img.data[di + 1] = buf[si + 1]; img.data[di + 2] = buf[si + 2]; img.data[di + 3] = buf[si + 3];
+      }
+      ctx.putImageData(img, 0, 0); ITEM_IMG[key] = cnv.toDataURL('image/png');
+      sc.remove(m); m.traverse(o => o.geometry && o.geometry.dispose());
+    }
+    renderer.setRenderTarget(prevRT); rt.dispose();
+  } catch (e) { /* fall back to emoji icons */ }
+}
+renderItemIcons();
+let itemRolling = false, lastLocalItem = null;
+function setItemIcon(key) {
+  if (key && !ITEM_IMG[key] && ITEM_KEYS.includes(key)) renderItemIcons();   // lazy build if the eager render missed
+  if (key && ITEM_IMG[key]) els.dmItemIcon.innerHTML = `<img class="item-img" src="${ITEM_IMG[key]}" alt="">`;
+  else els.dmItemIcon.textContent = key ? (ITEM_ICON[key] || '') : '';
+}
+function startItemRoll(target) {   // slot-machine reel: spin (띠로로로롱) then land on the granted item
+  itemRolling = true; els.dmItem.classList.add('rolling');
+  let n = 0; const total = 15; let delay = 42;
+  const step = () => {
+    setItemIcon(ITEM_KEYS[n % ITEM_KEYS.length]); sfx.play('ui_move');
+    if (++n < total) { delay += 7; setTimeout(step, delay); }       // decelerate
+    else { setItemIcon(target); sfx.play('item_grant'); itemRolling = false; els.dmItem.classList.remove('rolling'); }
+  };
+  step();
+}
 function fmtTime(s) { s = Math.max(0, Math.ceil(s)); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); }
 function updateDmHud(aw, mySlot) {
   const S = aw.S;
@@ -1088,11 +1137,13 @@ function updateDmHud(aw, mySlot) {
       `<span class="nm" style="color:${col}">${r.idx === mySlot ? '나' : 'P' + (r.idx + 1)}</span>` +
       `<span class="sc">${r.score}</span><span class="lv">${life}</span></div>`;
   }).join('');
-  // held item slot
+  // held item slot — slot-machine reel when a new item is granted
   const me = aw.riders[mySlot];
   const has = me && me.alive && me.item;
   els.dmItem.classList.toggle('has', !!has);
-  if (has) els.dmItemIcon.textContent = ITEM_ICON[me.item] || '❓';
+  if (has && me.item !== lastLocalItem && !itemRolling) { lastLocalItem = me.item; startItemRoll(me.item); }
+  else if (!has) { if (!itemRolling) setItemIcon(null); lastLocalItem = null; }
+  else if (has && !itemRolling) setItemIcon(me.item);
 }
 function showDmStandings(aw, mySlot, winner, showHint) {
   const ranked = aw.riders.filter(r => !r.startDead).sort((a, b) => b.score - a.score);
