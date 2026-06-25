@@ -1131,8 +1131,8 @@ function showScreen(name) {
   menuEl.classList.toggle('mainscreen', name === 'main');
   showHero(name === 'main');
 }
-function openMenu() { inMenu = true; menuEl.classList.remove('hidden'); hud.classList.remove('online', 'dm'); showScreen('main'); }
-function closeMenu() { inMenu = false; menuEl.classList.add('hidden'); showHero(false); }
+function openMenu() { inMenu = true; menuEl.classList.remove('hidden'); hud.classList.remove('online', 'dm'); hud.classList.add('mhidden'); showScreen('main'); }
+function closeMenu() { inMenu = false; menuEl.classList.add('hidden'); hud.classList.remove('mhidden'); showHero(false); }
 
 // ---- main-menu hero showcase: a rotating kart + rider on a podium ----
 const heroCanvas = document.getElementById('heroCanvas');
@@ -1160,7 +1160,12 @@ function rollHero() {
   heroKart.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
   heroKart.position.y = 0.4; heroScene.add(heroKart);
 }
-function resizeHero() { if (!heroR) return; heroR.setSize(innerWidth, innerHeight, false); heroCam.aspect = innerWidth / innerHeight; heroCam.updateProjectionMatrix(); }
+function resizeHero() {   // render low-res then upscale (CSS pixelated) to keep the dot/pixel look
+  if (!heroR) return;
+  const px = 4;
+  heroR.setSize(Math.max(2, Math.floor(innerWidth / px)), Math.max(2, Math.floor(innerHeight / px)), false);
+  heroCam.aspect = innerWidth / innerHeight; heroCam.updateProjectionMatrix();
+}
 function heroLoop() {
   if (!heroOn) return;
   if (heroKart) heroKart.rotation.y += 0.008;
@@ -1207,23 +1212,25 @@ function pickDmMode(kind) {
   dmModeGo = kind;
 }
 let dmModeGo = 'ai';
-async function startDeathmatch() {
+async function startDeathmatch(bots = 7) {
   teardownOnline(); closeMenu();
   const [pick] = await openKartSelect({ count: 1, title: `데스매치 — ${DM_MODES[dmModeKey].name}` });
   const defs = [{ color: pick.color, vehicle: pick.vehicle, isBot: false, name: '나' }];
-  for (let i = 1; i < 8; i++) defs.push({ color: DM_COLORS[i], vehicle: randVehicle(), isBot: true, name: '봇' + i });
+  for (let i = 1; i <= Math.min(7, bots); i++) defs.push({ color: DM_COLORS[i], vehicle: randVehicle(), isBot: true, name: '봇' + i });
   arenaWorld = createArenaWorld(defs, dmModeKey);
   gameMode = 'DM';
   hud.classList.remove('split', 'online'); hud.classList.add('dm'); camWrap.classList.remove('split');
   updateModeTag(); sizeTargets();
 }
-async function startDeathmatchLocal2() {
+async function startDeathmatchLocal2(bots = 0) {
   teardownOnline(); closeMenu();
   const picks = await openKartSelect({ count: 2, title: `데스매치 2인 — ${DM_MODES[dmModeKey].name}` });
-  arenaWorld = createArenaWorld([
+  const defs = [
     { color: picks[0].color, vehicle: picks[0].vehicle, isBot: false, name: 'P1' },
     { color: picks[1].color, vehicle: picks[1].vehicle, isBot: false, name: 'P2' },
-  ], dmModeKey);
+  ];
+  for (let i = 0; i < Math.min(6, bots); i++) defs.push({ color: DM_COLORS[i + 2], vehicle: randVehicle(), isBot: true, name: '봇' + (i + 1) });
+  arenaWorld = createArenaWorld(defs, dmModeKey);
   gameMode = 'DM2';
   hud.classList.remove('split', 'online'); hud.classList.add('dm'); camWrap.classList.remove('split');
   updateModeTag(); sizeTargets();
@@ -1441,22 +1448,55 @@ function endOnline(msg) {
 }
 
 // button wiring
-$('btnSingle').onclick = startSingle;
-$('btnLocal2').onclick = startLocal2;
-$('btnDeathmatch').onclick = () => pickDmMode('ai');
-$('btnDeathmatch2').onclick = () => pickDmMode('2p');
-$('btnOnline').onclick = () => { online.gameType = 'race'; showScreen('online'); setMsg('onlineMsg', '레이스 · 코드로 연결'); };
-$('btnDeathmatchOnline').onclick = () => pickDmMode('online');
-const proceedDm = () => {
-  if (dmModeGo === 'ai') startDeathmatch();
-  else if (dmModeGo === '2p') startDeathmatchLocal2();
-  else { showScreen('online'); setMsg('onlineMsg', `데스매치(${DM_MODES[dmModeKey].name}) · 코드로 연결`); }
+// ---- front-end flow: PLAY -> SOLO/LOCAL/ONLINE -> setup lobby (대기실) ----
+const setup = { kind: 'solo', gameType: 'dm', dmMode: 'score', bots: 3 };
+$('btnPlay').onclick = () => showScreen('play');
+$('btnPlayBack').onclick = () => showScreen('main');
+$('btnSolo').onclick = () => openSetup('solo');
+$('btnLocalPlay').onclick = () => openSetup('local');
+$('btnOnlinePlay').onclick = () => openSetup('online');
+$('btnSetupBack').onclick = () => showScreen('play');
+function openSetup(kind) { setup.kind = kind; showScreen('setup'); renderSetup(); }
+function renderSetup() {
+  $('setupTitle').textContent = ({ solo: 'SOLO 대기실', local: 'LOCAL 대기실', online: 'ONLINE 대기실' })[setup.kind];
+  const isDM = setup.gameType === 'dm';
+  $('gtRace').classList.toggle('on', !isDM); $('gtDM').classList.toggle('on', isDM);
+  $('dmModeRow').style.display = isDM ? 'flex' : 'none';
+  $('smScore').classList.toggle('on', setup.dmMode === 'score');
+  $('smSurvival').classList.toggle('on', setup.dmMode === 'survival');
+  $('smLives').classList.toggle('on', setup.dmMode === 'lives');
+  const botsAllowed = isDM && (setup.kind === 'solo' || setup.kind === 'local');
+  const humans = setup.kind === 'local' ? 2 : 1, maxBots = 8 - humans;
+  setup.bots = Math.max(0, Math.min(maxBots, setup.bots));
+  $('botRow').style.display = botsAllowed ? 'flex' : 'none';
+  $('botCount').textContent = setup.bots;
+  $('setupHint').textContent = botsAllowed ? `최대 ${maxBots}` : '';
+  const roster = $('setupRoster'); roster.innerHTML = '';
+  const add = (label, cls) => { const d = document.createElement('div'); d.className = 'rchip ' + cls; d.textContent = label; roster.appendChild(d); };
+  add('나', 'me');
+  if (setup.kind === 'local') add('P2', 'me');
+  if (setup.kind === 'online') add('+ 참가자', 'bot');
+  if (botsAllowed) for (let i = 0; i < setup.bots; i++) add('봇' + (i + 1), 'bot');
+  $('btnStartMatch').textContent = setup.kind === 'online' ? '방으로 ▶' : '시작 ▶';
+}
+$('gtRace').onclick = () => { setup.gameType = 'race'; renderSetup(); };
+$('gtDM').onclick = () => { setup.gameType = 'dm'; renderSetup(); };
+$('smScore').onclick = () => { setup.dmMode = 'score'; renderSetup(); };
+$('smSurvival').onclick = () => { setup.dmMode = 'survival'; renderSetup(); };
+$('smLives').onclick = () => { setup.dmMode = 'lives'; renderSetup(); };
+$('botMinus').onclick = () => { setup.bots--; renderSetup(); };
+$('botPlus').onclick = () => { setup.bots++; renderSetup(); };
+$('btnStartMatch').onclick = () => {
+  dmModeKey = setup.dmMode;
+  if (setup.kind === 'online') {
+    online.gameType = setup.gameType === 'dm' ? 'dm' : 'race';
+    showScreen('online'); setMsg('onlineMsg', `${setup.gameType === 'dm' ? '데스매치' : '레이스'} · 방 만들기/코드 참가`);
+    return;
+  }
+  if (setup.gameType === 'race') { if (setup.kind === 'solo') startSingle(); else startLocal2(); }
+  else { if (setup.kind === 'solo') startDeathmatch(setup.bots); else startDeathmatchLocal2(setup.bots); }
 };
-$('dmModeScore').onclick = () => { dmModeKey = 'score'; proceedDm(); };
-$('dmModeSurvival').onclick = () => { dmModeKey = 'survival'; proceedDm(); };
-$('dmModeLives').onclick = () => { dmModeKey = 'lives'; proceedDm(); };
-$('dmModeBack').onclick = () => showScreen('main');
-$('btnBackMain').onclick = () => { teardownOnline(); showScreen('main'); };
+$('btnBackMain').onclick = () => { teardownOnline(); showScreen('play'); };
 // main-screen side boxes: mute toggle + controls help
 window.__muted = false;
 $('sideLeft').onclick = () => {

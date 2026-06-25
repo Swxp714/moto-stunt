@@ -117,8 +117,9 @@
     /* ---- menu / lobby ---- */
     #menu { position: fixed; inset: 0; z-index: 50; display: flex; flex-direction: column;
       align-items: center; justify-content: center; gap: 18px;
-      background: rgba(4,6,12,.84); font-family: var(--font); color: var(--ink); }
+      background: linear-gradient(180deg, #0c1c30 0%, #070d18 100%); font-family: var(--font); color: var(--ink); }
     #menu.hidden { display: none; }
+    #hud.mhidden { display: none; }   /* hide game HUD while a menu screen is open */
     .m-title { font-size: 38px; color: var(--cyan); letter-spacing: .06em; margin-bottom: 6px; text-shadow: 4px 4px 0 #06283a; }
     .m-sub { font-size: 11px; color: var(--dim); margin-top: -10px; margin-bottom: 14px; letter-spacing: .1em; }
     .m-screen { display: flex; flex-direction: column; align-items: center; gap: 12px; }
@@ -146,33 +147,46 @@
     .m-result { font-size: 40px; margin-bottom: 6px; }
     .m-result.win { color: var(--yellow); } .m-result.lose { color: var(--red); }
 
-    /* ---- redesigned main screen (hero showcase) ---- */
-    #heroCanvas { position: absolute; inset: 0; z-index: 0; display: none; }
-    #menu.mainscreen { justify-content: flex-start; background: linear-gradient(180deg, #12365c 0%, #0c2138 48%, #07101d 100%); }
-    #menu.mainscreen::after { content: ''; position: absolute; inset: 0; z-index: 0; opacity: .08; pointer-events: none;
+    /* ---- main screen: pixel/dot UI + hero showcase ---- */
+    #heroCanvas { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 0; display: none; image-rendering: pixelated; }
+    #menu.mainscreen { justify-content: flex-start; background: linear-gradient(180deg, #123a5e 0%, #0c2138 48%, #07101d 100%); }
+    #menu.mainscreen::after { content: ''; position: absolute; inset: 0; z-index: 0; opacity: .07; pointer-events: none;
       background-image: linear-gradient(45deg, #fff 25%, transparent 25%, transparent 75%, #fff 75%), linear-gradient(45deg, #fff 25%, transparent 25%, transparent 75%, #fff 75%);
       background-size: 64px 64px; background-position: 0 0, 32px 32px; }
     #menu.mainscreen #heroCanvas { display: block; }
-    #menu.mainscreen .m-title { position: absolute; top: 34px; left: 0; right: 0; text-align: center; z-index: 2;
-      font-size: 58px; color: #fff; text-shadow: 0 4px 0 #06283a, 0 0 30px rgba(90,209,255,.5); }
-    #menu.mainscreen .m-sub { position: absolute; top: 104px; left: 0; right: 0; text-align: center; z-index: 2;
-      margin: 0; color: var(--cyan); }
-    .main-only { display: none; }
-    #menu.mainscreen .main-only { display: flex; }
-    .play-panel { position: absolute; bottom: 34px; left: 50%; transform: translateX(-50%); z-index: 2;
-      background: rgba(8,16,28,.72); border: 3px solid var(--cyan); border-radius: 16px; padding: 14px 18px;
-      box-shadow: 0 10px 0 rgba(0,0,0,.25), inset 0 0 24px rgba(90,209,255,.12); }
-    .play-label { color: var(--yellow); font-size: 13px; margin-bottom: 11px; text-align: center; letter-spacing: .14em; }
+    #menu.mainscreen .m-title { position: absolute; top: 30px; left: 0; right: 0; text-align: center; z-index: 2;
+      font-size: 56px; color: #fff; text-shadow: 4px 4px 0 #06283a, 0 0 0 #000; }
+    #menu.mainscreen .m-sub { position: absolute; top: 100px; left: 0; right: 0; text-align: center; z-index: 2; margin: 0; color: var(--cyan); }
+    /* pixel boxes (no rounded corners; double hard border) */
+    .play-panel { position: absolute; bottom: 38px; left: 50%; transform: translateX(-50%); z-index: 2;
+      background: #0a1422; border: 3px solid var(--cyan); padding: 16px 20px; box-shadow: 0 0 0 3px #06060c, 6px 6px 0 #06060c; }
+    .play-label { color: var(--yellow); font-size: 13px; margin-bottom: 12px; text-align: center; letter-spacing: .14em; }
     .play-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
-    .play-grid .mbtn { min-width: 168px; padding: 12px 10px; font-size: 13px; }
-    .side-box { position: absolute; bottom: 56px; width: 72px; height: 72px; z-index: 2; cursor: pointer;
-      display: flex; align-items: center; justify-content: center; font-size: 30px;
-      background: rgba(8,16,28,.72); border: 3px solid var(--cyan); border-radius: 16px;
-      box-shadow: 0 8px 0 rgba(0,0,0,.25); transition: transform .08s; }
+    .play-grid.p3 .mbtn { min-width: 150px; }
+    .play-grid .mbtn { min-width: 168px; padding: 12px 10px; font-size: 13px; display: flex; flex-direction: column; gap: 3px; }
+    .play-grid .mbtn span { font-size: 9px; opacity: .75; font-weight: 400; }
+    .mbtn.big { font-size: 22px; padding: 18px 60px; }
+    .side-box { position: absolute; bottom: 56px; width: 70px; height: 70px; z-index: 2; cursor: pointer;
+      display: flex; align-items: center; justify-content: center; font-size: 28px;
+      background: #0a1422; border: 3px solid var(--cyan); box-shadow: 0 0 0 3px #06060c; transition: transform .08s; }
     #menu:not(.mainscreen) .side-box { display: none; }
-    .side-box:hover { transform: translateY(-3px); background: rgba(90,209,255,.2); }
+    .side-box:hover { transform: translateY(-2px); background: rgba(90,209,255,.2); }
     .side-box#sideLeft { left: 44px; } .side-box.right { right: 44px; }
     .side-box.muted { border-color: var(--dim); opacity: .6; }
+    /* ---- setup lobby (대기실) ---- */
+    .setup-panel { background: #0a1422; border: 3px solid var(--cyan); box-shadow: 0 0 0 3px #06060c, 6px 6px 0 #06060c;
+      padding: 18px 22px; display: flex; flex-direction: column; gap: 12px; min-width: 380px; }
+    .setup-title { font-size: 16px; color: var(--yellow); text-align: center; letter-spacing: .08em; }
+    .setup-row { display: flex; align-items: center; gap: 8px; }
+    .setup-row .lbl { width: 44px; font-size: 12px; color: var(--dim); }
+    .seg { font-family: var(--font); font-size: 12px; color: var(--cyan); background: #0c1830; border: 2px solid var(--cyan);
+      padding: 8px 14px; cursor: pointer; }
+    .seg.on { background: var(--cyan); color: #04121c; }
+    .setup-row b { font-size: 18px; color: #fff; min-width: 26px; text-align: center; }
+    .hint2 { font-size: 10px; color: var(--dim); margin-left: 6px; }
+    .setup-roster { display: flex; flex-wrap: wrap; gap: 6px; min-height: 28px; }
+    .rchip { font-size: 11px; padding: 5px 9px; border: 2px solid var(--dim); background: #0c1830; }
+    .rchip.me { border-color: #fff; color: #fff; } .rchip.bot { color: var(--dim); }
     #helpOverlay { position: absolute; inset: 0; z-index: 5; display: flex; align-items: center; justify-content: center; background: rgba(4,6,12,.7); }
     #helpOverlay.hidden { display: none; }
     .help-card { background: #0c1424; border: 3px solid var(--cyan); border-radius: 16px; padding: 22px 26px; max-width: 420px; }
@@ -282,19 +296,37 @@
     <div class="m-sub">PIXEL WHEELIE · TRAIL DEATHMATCH</div>
 
     <div class="m-screen" data-s="main">
-      <div class="play-panel">
-        <div class="play-label">▶ PLAY</div>
-        <div class="play-grid">
-          <button class="mbtn" id="btnSingle">싱글 레이스</button>
-          <button class="mbtn" id="btnLocal2">로컬 2인 레이스</button>
-          <button class="mbtn" id="btnOnline">온라인 레이스</button>
-          <button class="mbtn" id="btnDeathmatch">데스매치 vs AI</button>
-          <button class="mbtn" id="btnDeathmatch2">데스매치 2인</button>
-          <button class="mbtn" id="btnDeathmatchOnline">데스매치 온라인</button>
-        </div>
-      </div>
+      <div class="play-panel"><button class="mbtn big" id="btnPlay">▶ PLAY</button></div>
       <div class="side-box" id="sideLeft" title="음소거">🔊</div>
       <div class="side-box right" id="sideRight" title="조작법">❔</div>
+    </div>
+
+    <div class="m-screen" data-s="play" hidden>
+      <div class="play-panel">
+        <div class="play-label">모드 선택</div>
+        <div class="play-grid p3">
+          <button class="mbtn" id="btnSolo">SOLO<span>혼자 / 봇과</span></button>
+          <button class="mbtn" id="btnLocalPlay">LOCAL<span>한 PC 2인</span></button>
+          <button class="mbtn" id="btnOnlinePlay">ONLINE<span>방 코드</span></button>
+        </div>
+        <button class="mbtn ghost" id="btnPlayBack">← 뒤로</button>
+      </div>
+    </div>
+
+    <div class="m-screen" data-s="setup" hidden>
+      <div class="setup-panel">
+        <div class="setup-title" id="setupTitle">SOLO 대기실</div>
+        <div class="setup-row"><span class="lbl">게임</span>
+          <button class="seg" id="gtRace">레이스</button><button class="seg on" id="gtDM">데스매치</button></div>
+        <div class="setup-row" id="dmModeRow"><span class="lbl">모드</span>
+          <button class="seg on" id="smScore">점수전</button><button class="seg" id="smSurvival">서바이벌</button><button class="seg" id="smLives">목숨3</button></div>
+        <div class="setup-roster" id="setupRoster"></div>
+        <div class="setup-row" id="botRow"><span class="lbl">봇</span>
+          <button class="seg" id="botMinus">−</button><b id="botCount">3</b><button class="seg" id="botPlus">+</button>
+          <span class="hint2" id="setupHint"></span></div>
+        <button class="mbtn" id="btnStartMatch">시작 ▶</button>
+        <button class="mbtn ghost" id="btnSetupBack">← 뒤로</button>
+      </div>
     </div>
 
     <div id="helpOverlay" class="hidden">
