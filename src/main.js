@@ -1209,7 +1209,7 @@ function closeMenu() { inMenu = false; menuEl.classList.add('hidden'); hud.class
 const heroCanvas = document.getElementById('heroCanvas');
 const fadeOverlay = document.getElementById('fadeOverlay');
 const HERO_COLORS = [0xe8842a, 0xe14b4b, 0x4b86e1, 0x49b96a, 0x9b59d0, 0xf2c53d];
-let heroR, heroScene, heroCam, heroKart, heroRAF, heroOn = false, heroPlay, heroHover = false, heroFly = 0, heroTremble = 0, heroSpk = null;
+let heroR, heroScene, heroCam, heroKart, heroRAF, heroOn = false, heroPlay, heroExit, heroSettings, heroHover = false, heroHoverBtn = null, heroFly = 0, heroTremble = 0, heroSpk = null;
 // build a text plane from a 2D canvas (pixelated along with everything else)
 function heroText(text, { fs = 110, color = '#ffffff', shadow = null, h = 1 } = {}) {
   const c = document.createElement('canvas'), ctx = c.getContext('2d'), pad = 24;
@@ -1239,19 +1239,21 @@ function initHero() {
   // in-canvas UI
   heroScene.add(at(heroText('MOTO STUNT', { fs: 130, color: '#ffffff', shadow: '#0a3050', h: 1.05 }), 0, 4.0, 2));
   heroScene.add(at(heroText('PIXEL WHEELIE · TRAIL DEATHMATCH', { fs: 56, color: '#5ad1ff', h: 0.32 }), 0, 3.25, 2));
-  heroPlay = at(heroText('▶ PLAY', { fs: 120, color: '#04121c', shadow: null, h: 0.5 }), 0, -0.15, 2.2);
-  heroPlay.material.depthTest = false; heroPlay.renderOrder = 11;
-  // cyan plate behind the PLAY text
-  const plate = new THREE.Mesh(new THREE.PlaneGeometry(3.2, 0.82), new THREE.MeshBasicMaterial({ color: 0x5ad1ff, depthTest: false }));
-  plate.position.set(0, -0.15, 2.1); plate.renderOrder = 10;
-  const plateBorder = new THREE.Mesh(new THREE.PlaneGeometry(3.5, 1.06), new THREE.MeshBasicMaterial({ color: 0x06283a, depthTest: false }));
-  plateBorder.position.set(0, -0.15, 2.05); plateBorder.renderOrder = 9;
-  heroScene.add(plateBorder, plate, heroPlay);
-  heroPlay.userData.plate = plate;
+  // unified in-canvas buttons (PLAY center, EXIT left, 설정 right) — all cel-shaded
+  const mkBtn = (label, x, y, w, h, fs, col, txtCol) => {
+    const g = new THREE.Group(); g.position.set(x, y, 2);
+    const bd = new THREE.Mesh(new THREE.PlaneGeometry(w + 0.3, h + 0.3), new THREE.MeshBasicMaterial({ color: 0x06283a, depthTest: false })); bd.renderOrder = 9; bd.position.z = -0.15;
+    const pl = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ color: col, depthTest: false })); pl.renderOrder = 10; pl.position.z = -0.1;
+    const tx = heroText(label, { fs, color: txtCol, h: h * 0.6 }); tx.material.depthTest = false; tx.renderOrder = 11;
+    g.add(bd, pl, tx); g.userData.plate = pl; g.userData.base = { x, y }; heroScene.add(g); return g;
+  };
+  heroPlay = mkBtn('▶ PLAY', 0, -0.35, 3.2, 0.82, 118, 0x5ad1ff, '#04121c');
+  heroExit = mkBtn('EXIT', -3.9, -1.45, 1.9, 0.72, 74, 0xff6a6a, '#1a0606');
+  heroSettings = mkBtn('설정', 3.9, -1.45, 1.9, 0.72, 74, 0x5ad1ff, '#04121c');
   // spark burst for the wheelie flyoff
   const HN = 80, hp = new Float32Array(HN * 3).fill(-9999), hv = new Float32Array(HN * 3), hl = new Float32Array(HN);
   const hgeo = new THREE.BufferGeometry(); hgeo.setAttribute('position', new THREE.BufferAttribute(hp, 3));
-  heroScene.add(new THREE.Points(hgeo, new THREE.PointsMaterial({ color: 0xffc23a, size: 0.17, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false })));
+  heroScene.add(new THREE.Points(hgeo, new THREE.PointsMaterial({ color: 0xffd84a, size: 4, sizeAttenuation: false, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false })));
   heroSpk = { hp, hv, hl, hgeo, i: 0, N: HN };
 }
 function rollHero() {
@@ -1267,21 +1269,32 @@ function resizeHero() {   // render low-res then upscale (CSS pixelated) to keep
   heroR.setSize(Math.max(2, Math.floor(innerWidth / 4)), Math.max(2, Math.floor(innerHeight / 4)), false);
   heroCam.aspect = innerWidth / innerHeight; heroCam.updateProjectionMatrix();
 }
+function doExit() {
+  if (!confirm('게임을 종료할까요?')) return;
+  try { window.open('', '_self'); window.close(); } catch (e) {}
+  document.body.innerHTML = '<div style="position:fixed;inset:0;display:flex;flex-direction:column;gap:14px;align-items:center;justify-content:center;background:#06080f;color:#5ad1ff;font-family:Galmuri11,monospace;font-size:22px;">또 만나요! 👋<div style="font-size:12px;color:#8aa0c0">탭을 닫아 종료하세요</div></div>';
+}
 const heroRay = new THREE.Raycaster(), heroM = new THREE.Vector2();
 function heroPoint(e, click) {
-  if (!heroOn || !heroPlay || heroFly) return;
+  if (!heroOn || !heroPlay || heroFly || heroTremble > 0) return;
   heroM.x = (e.clientX / innerWidth) * 2 - 1; heroM.y = -(e.clientY / innerHeight) * 2 + 1;
   heroRay.setFromCamera(heroM, heroCam);
-  const hit = heroRay.intersectObject(heroPlay.userData.plate).length > 0;
-  heroHover = hit; heroCanvas.style.cursor = hit ? 'pointer' : 'default';
-  if (hit && click) startMainTransition();
+  let hit = null;
+  for (const b of [heroPlay, heroExit, heroSettings]) if (b && heroRay.intersectObject(b.userData.plate).length) { hit = b; break; }
+  heroHover = (hit === heroPlay); heroHoverBtn = hit; heroCanvas.style.cursor = hit ? 'pointer' : 'default';
+  if (hit && click) {
+    if (hit === heroPlay) startMainTransition();
+    else if (hit === heroExit) doExit();
+    else if (hit === heroSettings) { sfx.play('ui_click'); document.getElementById('soundOverlay').classList.remove('hidden'); }
+  }
 }
 heroCanvas.addEventListener('pointermove', e => heroPoint(e, false));
 heroCanvas.addEventListener('click', e => heroPoint(e, true));
 let transitioning = false;
 function startMainTransition() {   // PLAY: bike trembles, pops a wheelie, then zooms off; next UI slides in
   if (transitioning) return; transitioning = true; heroTremble = 0.45;
-  setTimeout(() => { heroTremble = 0; heroFly = 1; }, 450);   // tremble -> wheelie launch
+  sfx.init(); sfx.play('wheelie_boost');                       // engine rev on press
+  setTimeout(() => { heroTremble = 0; heroFly = 1; sfx.play('count_go'); }, 450);   // tremble -> wheelie launch (vroom)
   setTimeout(() => {
     showScreen('play');
     const ps = menuEl.querySelector('.m-screen[data-s="play"]');
@@ -1296,12 +1309,14 @@ function heroLoop() {
     if (heroKart) { heroKart.rotation.y = 0; heroKart.position.set((Math.random() - 0.5) * 0.32, 0.4 + (Math.random() - 0.5) * 0.12, 0); heroKart.rotation.z = (Math.random() - 0.5) * 0.13; }
   } else if (heroFly) {   // 윌리(앞바퀴 들고) 한 상태로 오른쪽으로 쭉 쓩~
     if (heroKart) { heroKart.rotation.y = 0; heroKart.position.y = 0.4; heroKart.rotation.z = Math.min(0.9, heroKart.rotation.z + 0.09); heroKart.position.x += 1.0; }
-  }
+  } else if (heroKart) heroKart.rotation.y += 0.008;   // idle showcase spin
+  // sparks: spew from the rear wheel while revving (tremble) and flying off
   if (heroSpk) {
-    if (heroFly && heroKart) for (let s = 0; s < 4; s++) {   // spew sparks from the rear wheel while flying off
+    const emit = (heroTremble > 0 ? 2 : 0) + (heroFly ? 6 : 0);
+    if (emit && heroKart) for (let s = 0; s < emit; s++) {
       const i = heroSpk.i; heroSpk.i = (heroSpk.i + 1) % heroSpk.N;
-      heroSpk.hp[i*3] = heroKart.position.x - 1.4; heroSpk.hp[i*3+1] = 0.5 + Math.random() * 0.4; heroSpk.hp[i*3+2] = (Math.random() - 0.5) * 0.7;
-      heroSpk.hv[i*3] = -3 - Math.random() * 4; heroSpk.hv[i*3+1] = 1.5 + Math.random() * 2.5; heroSpk.hv[i*3+2] = (Math.random() - 0.5) * 2.5;
+      heroSpk.hp[i*3] = heroKart.position.x - 1.5; heroSpk.hp[i*3+1] = 0.45 + Math.random() * 0.5; heroSpk.hp[i*3+2] = (Math.random() - 0.5) * 0.8;
+      heroSpk.hv[i*3] = -3 - Math.random() * 5; heroSpk.hv[i*3+1] = 2 + Math.random() * 3; heroSpk.hv[i*3+2] = (Math.random() - 0.5) * 3;
       heroSpk.hl[i] = 0.4 + Math.random() * 0.3;
     }
     for (let i = 0; i < heroSpk.N; i++) {
@@ -1311,9 +1326,14 @@ function heroLoop() {
     }
     heroSpk.hgeo.attributes.position.needsUpdate = true;
   }
-  else if (heroKart) heroKart.rotation.y += 0.008;
-  if (heroPlay) { const s = heroHover ? 1.08 : 1.0; heroPlay.scale.x += (s - heroPlay.scale.x) * 0.2; heroPlay.scale.y = heroPlay.scale.x;
-    if (heroPlay.userData.plate) { heroPlay.userData.plate.scale.x += ((heroHover ? 1.06 : 1) - heroPlay.userData.plate.scale.x) * 0.2; heroPlay.userData.plate.scale.y = heroPlay.userData.plate.scale.x; } }
+  // hover: subtle 부들부들 tremble + slight scale on whichever button is pointed
+  if (!heroFly && heroTremble <= 0) for (const b of [heroPlay, heroExit, heroSettings]) {
+    if (!b || !b.userData.base) continue;
+    const hov = (b === heroHoverBtn), bx = b.userData.base.x, by = b.userData.base.y;
+    if (hov) { b.position.set(bx + (Math.random() - 0.5) * 0.06, by + (Math.random() - 0.5) * 0.06, 2); b.rotation.z = (Math.random() - 0.5) * 0.018; }
+    else { b.position.set(bx, by, 2); b.rotation.z = 0; }
+    const s = hov ? 1.05 : 1.0; b.scale.x += (s - b.scale.x) * 0.25; b.scale.y = b.scale.x;
+  }
   heroCam.position.set(0, 3.6, 12.8); heroCam.lookAt(0, 1.3, 0);
   heroR.render(heroScene, heroCam);
   heroRAF = requestAnimationFrame(heroLoop);

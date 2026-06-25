@@ -132,10 +132,10 @@
     /* 지글지글/위글위글: tiny jitter on UI containers (children keep their own transforms) */
     /* "wiggle paint" boiling-line jitter: jumps between 3 hand-drawn frames */
     @keyframes wiggle {
-      0%   { transform: translate(.45px,-.4px) rotate(-.2deg); }
-      33%  { transform: translate(-.45px,.35px) rotate(.24deg); }
-      66%  { transform: translate(.3px,.45px) rotate(-.08deg); }
-      100% { transform: translate(.45px,-.4px) rotate(-.2deg); }
+      0%   { transform: translate(.25px,-.22px) rotate(-.1deg); }
+      33%  { transform: translate(-.25px,.2px) rotate(.13deg); }
+      66%  { transform: translate(.16px,.25px) rotate(-.04deg); }
+      100% { transform: translate(.25px,-.22px) rotate(-.1deg); }
     }
     /* still by default; tremble (부들부들) only on hover */
     .mbtn:hover, .seg:hover, .side-box:hover, .rchip:hover, .ks-chip:hover, .ks-sw div:hover, .pcard:hover {
@@ -193,13 +193,13 @@
     .side-box { position: absolute; bottom: 56px; width: 70px; height: 70px; z-index: 2; cursor: pointer;
       display: flex; align-items: center; justify-content: center; font-size: 28px;
       background: #0a1422; border: 3px solid var(--cyan); box-shadow: 0 0 0 3px #06060c; transition: transform .08s; }
-    #menu:not(.mainscreen) .side-box { display: none; }
+    .side-box { display: none; }   /* replaced by in-canvas EXIT/설정 buttons */
     .side-box:hover { transform: translateY(-2px); background: rgba(90,209,255,.2); }
     .side-box#sideLeft { left: 44px; } .side-box.right { right: 44px; }
     .side-box.muted { border-color: var(--dim); opacity: .6; }
     .main-exit { position: absolute; bottom: 16px; left: 50%; transform: translateX(-50%); z-index: 2;
       min-width: 0; padding: 8px 24px; font-size: 12px; }
-    #menu:not(.mainscreen) .main-exit { display: none; }
+    .main-exit { display: none; }   /* replaced by in-canvas EXIT button */
     #soundOverlay { position: absolute; inset: 0; z-index: 5; display: flex; align-items: center; justify-content: center; background: rgba(4,6,12,.7); }
     #soundOverlay.hidden { display: none; }
     .snd-row { display: flex; align-items: center; gap: 10px; margin: 16px 0; font-size: 12px; color: var(--ink); }
