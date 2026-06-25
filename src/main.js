@@ -564,21 +564,73 @@ function createArenaWorld(riderDefs, modeKey = 'score') {
     }
     return false;
   }
-  function botSteer(r) {
-    // cast rays at several angles, measure clearance, steer toward the openest (look ahead)
-    const angles = [0, 0.3, -0.3, 0.6, -0.6, 1.0, -1.0, 1.5, -1.5];
-    let best = -1e9, bestA = 0;
-    for (const da of angles) {
-      const h = r.heading + da, fx = Math.sin(h), fz = -Math.cos(h);
-      let clear = 0;
-      for (let step = 2; step <= 18; step += 2) {
-        if (blockedAt(r, r.x + fx * step, r.z + fz * step, 0.9)) break;
-        clear = step;
-      }
-      const score = clear - Math.abs(da) * 2.0;   // prefer straighter when clearance is similar
-      if (score > best) { best = score; bestA = da; }
+  // --- bot aggression tuning (higher = hunts harder; safety always overrides) ---
+  const BOT_AGGRO = 0.7;     // 0 = passive (old behavior), 1 = relentless hunter
+  // free-ahead clearance for a heading (used by both avoidance and offense)
+  function clearAhead(r, h, maxStep) {
+    const fx = Math.sin(h), fz = -Math.cos(h);
+    let clear = 0;
+    for (let step = 2; step <= maxStep; step += 2) {
+      if (blockedAt(r, r.x + fx * step, r.z + fz * step, 0.9)) break;
+      clear = step;
     }
-    return Math.max(-1, Math.min(1, bestA * 2.2));
+    return clear;
+  }
+  // pick the bot's prey: nearest living opponent, with a per-bot bias toward the human (idx 0)
+  function botTarget(r) {
+    const huntHuman = ((r.idx * 0.37) % 1) < BOT_AGGRO;   // some bots fixate on the player
+    let best = null, bestD = 1e9;
+    for (const rr of riders) {
+      if (rr === r || !rr.alive || rr.startDead) continue;
+      let d = Math.hypot(rr.x - r.x, rr.z - r.z);
+      if (huntHuman && rr.idx === 0) d *= 0.45;            // weight the player closer so we chase them
+      if (d < bestD) { bestD = d; best = rr; }
+    }
+    return best;
+  }
+  function botSteer(r, dt) {
+    // 1) SAFETY: cast rays, find the openest direction (avoid boundary + every trail)
+    const angles = [0, 0.3, -0.3, 0.6, -0.6, 1.0, -1.0, 1.5, -1.5];
+    let best = -1e9, safeA = 0, fwdClear = 0;
+    for (const da of angles) {
+      const clear = clearAhead(r, r.heading + da, 18);
+      if (da === 0) fwdClear = clear;
+      const score = clear - Math.abs(da) * 2.0;   // prefer straighter when clearance is similar
+      if (score > best) { best = score; safeA = da; }
+    }
+    const safeSteer = Math.max(-1, Math.min(1, safeA * 2.2));
+
+    // 2) OFFENSE: steer toward a lead/intercept point ahead of the target to cut them off
+    const perBot = ((r.idx * 0.61) % 1);              // per-bot variation (lead amount, wheelie taste)
+    const target = botTarget(r);
+    let pursueSteer = safeSteer, wantWheelie = false;
+    if (target) {
+      const tdist = Math.hypot(target.x - r.x, target.z - r.z);
+      const lead = (1.4 + perBot * 1.6) * BOT_AGGRO;     // how far ahead of the target we aim
+      const tfx = Math.sin(target.heading), tfz = -Math.cos(target.heading);
+      const aimX = target.x + tfx * target.speed * lead * 0.12;
+      const aimZ = target.z + tfz * target.speed * lead * 0.12;
+      const wantH = Math.atan2(aimX - r.x, -(aimZ - r.z));   // heading that points at the intercept
+      let dh = ((wantH - r.heading + Math.PI * 3) % (Math.PI * 2)) - Math.PI;   // signed turn, [-π,π]
+      pursueSteer = Math.max(-1, Math.min(1, dh * 1.6));
+      // wheelie burst to close distance when far + the lane ahead is clear (and not about to flip)
+      wantWheelie = tdist > 24 && fwdClear >= 12 && r.pitch < CFG.maxPitch * 0.78;
+    }
+
+    // 3) BLEND: pursue when the road ahead is open; let avoidance take over as danger closes in
+    const danger = Math.max(0, Math.min(1, (10 - fwdClear) / 10));   // 0 = clear, 1 = wall in face
+    const aggro = BOT_AGGRO * (1 - danger);                          // offense fades near hazards
+    let steer = safeSteer * (1 - aggro) + pursueSteer * aggro;
+    if (fwdClear <= 4) steer = safeSteer;                            // imminent collision: pure escape
+
+    // 4) WHEELIE control (bots manage their own pitch; never flip — respect maxPitch)
+    const flipGuard = CFG.maxPitch * 0.82;
+    if (wantWheelie && danger < 0.3) {
+      r.pitch = Math.min(flipGuard, r.pitch + CFG.pitchRiseRate * 0.7 * dt);
+    } else {
+      r.pitch = Math.max(0, r.pitch - CFG.pitchFallRate * dt);       // settle back down when turning/avoiding
+    }
+    return Math.max(-1, Math.min(1, steer));
   }
 
   // --- death explosion (shared pool) ---
@@ -782,7 +834,7 @@ function createArenaWorld(riderDefs, modeKey = 'score') {
         continue;
       }
       const inp = (inputs && inputs[r.idx]) || {};
-      const steer = r.isBot ? botSteer(r) : (inp.steer || 0);
+      const steer = r.isBot ? botSteer(r, dt) : (inp.steer || 0);
       if (!r.isBot) r.head = inp.head || 0;
       let dead = false, cause = '', killer = -1;
 
@@ -791,8 +843,15 @@ function createArenaWorld(riderDefs, modeKey = 'score') {
       if (r.shield > 0) r.shield -= dt;
       const immune = r.invuln > 0 || r.shield > 0;   // trail/boundary-proof
 
-      // bots: occasionally fire their item; chance up when trailing
-      if (r.isBot && r.item && Math.random() < dt * 0.4) useItem(r.idx);
+      // bots: use items offensively — fire shield/super to ram a nearby target, boost to close in
+      if (r.isBot && r.item) {
+        const prey = botTarget(r);
+        const pd = prey ? Math.hypot(prey.x - r.x, prey.z - r.z) : 1e9;
+        let fire = Math.random() < dt * 0.4;            // baseline (keeps old cadence)
+        if (r.item === 'shield' || r.item === 'super') fire = fire || (pd < 16 && Math.random() < dt * 3.0); // strike range -> body-check
+        else if (r.item === 'boost') fire = fire || (pd > 26 && Math.random() < dt * 2.0);                   // far -> burst to catch up
+        if (fire) useItem(r.idx);
+      }
 
       // jump pad launch + airborne parabola (over trails, immune while flying)
       if (r.air > 0) r.air -= dt;
