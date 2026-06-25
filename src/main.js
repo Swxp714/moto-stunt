@@ -8,6 +8,7 @@ import { HandTracker, computeControls } from './hands.js';
 import { makeBayerTexture } from './pixelart.js';
 import { Net } from './net.js';
 import { VEHICLES, mountRider } from '../models/vehicles.js';
+import { openKartSelect } from './kartselect.js';
 
 // soft/angular 3D vehicle models keyed for in-game use
 const VMAP = Object.fromEntries(VEHICLES.map(v => [v.key, v]));
@@ -33,8 +34,8 @@ const CFG = {
   speedWarp: 0.55,   // barrel screen-warp strength at top speed
   maxPitch: 1.0, pitchRiseRate: 2.2, pitchFallRate: 2.5, trackLength: 3000,
   respawnFreeze: 1.0, invincibleTime: 1.5,
-  pixelSize: 5,            // low-res RT downscale factor
-  colorSteps: 4, dither: 1.0,  // pixel-art grade ("strong retro", user-chosen)
+  pixelSize: 4,            // low-res RT downscale factor (lower = sharper shapes)
+  colorSteps: 6, dither: 0.65,  // pixel-art grade — softened so bike shapes read clearly
 };
 const STATE = { RIDING: 'riding', CRASHED: 'crashed', FINISHED: 'finished' };
 
@@ -133,7 +134,16 @@ function createWorld(bodyColor) {
   const sun = new THREE.DirectionalLight(0xffffff, 1.8); sun.position.set(6, 12, 4); scene.add(sun);
   scene.add(buildGridFloor());
   scene.add(buildRoad());
-  const bike = buildBike(bodyColor); scene.add(bike);
+  let bike = buildBike(bodyColor); scene.add(bike);
+  let myChoice = { vehicle: DEFAULT_VEHICLE, color: bodyColor };
+  // swap the player's bike to a chosen vehicle + color (from kart select)
+  function setVehicle(choice) {
+    if (choice) myChoice = { vehicle: choice.vehicle || myChoice.vehicle, color: choice.color != null ? choice.color : myChoice.color };
+    scene.remove(bike);
+    bike.traverse(o => { if (o.geometry) o.geometry.dispose(); });
+    bike = buildBike(myChoice.color, { vehicle: myChoice.vehicle });
+    scene.add(bike);
+  }
 
   // opponent ghost (online): half-saturation + translucent
   const oppBike = buildBike(0x49d17a);
@@ -383,7 +393,7 @@ function createWorld(bodyColor) {
     fx.flash = Math.max(0, fx.flash - dt * 3);
   }
 
-  return { scene, camera, game, fx, reset, update, celebrate, setOpponentState, clearOpponent, opp, bike, obstacles };
+  return { scene, camera, game, fx, reset, update, celebrate, setOpponentState, clearOpponent, setVehicle, opp, get bike() { return bike; }, obstacles };
 }
 
 // ---------------------------------------------------------------------------
@@ -428,7 +438,7 @@ function createArenaWorld(riderDefs) {
 
   // --- riders ---
   function makeRider(def, idx) {
-    const bike = buildBike(def.color); scene.add(bike);
+    const bike = buildBike(def.color, { vehicle: def.vehicle }); scene.add(bike);
     bike.rotation.order = 'YXZ';   // yaw (heading) then pitch (wheelie)
     return { idx, isBot: !!def.isBot, remote: !!def.remote, startDead: !!def.dead, name: def.name, color: def.color, bike,
       trailMat: new THREE.MeshBasicMaterial({ color: def.color }), trailSegs: [], trailMeshes: [],
@@ -970,27 +980,41 @@ function teardownOnline() {
   if (net) { net.close(); net = null; }
   worlds[0].clearOpponent();
 }
-function startSingle() { teardownOnline(); setGameMode('1P'); worlds[0].reset(); closeMenu(); }
-function startLocal2() { teardownOnline(); setGameMode('2P'); worlds.forEach(w => w.reset()); closeMenu(); }
+const VKEYS = VEHICLES.map(v => v.key);
+const randVehicle = () => VKEYS[Math.floor(Math.random() * VKEYS.length)];
+
+async function startSingle() {
+  teardownOnline(); closeMenu();
+  const [pick] = await openKartSelect({ count: 1, title: '카트 선택 — 싱글 레이스' });
+  worlds[0].setVehicle(pick); setGameMode('1P'); worlds[0].reset();
+}
+async function startLocal2() {
+  teardownOnline(); closeMenu();
+  const picks = await openKartSelect({ count: 2, title: '카트 선택 — 로컬 2인 레이스' });
+  worlds[0].setVehicle(picks[0]); worlds[1].setVehicle(picks[1]);
+  setGameMode('2P'); worlds.forEach(w => w.reset());
+}
 const DM_COLORS = [0xff5a3c, 0x3a8bff, 0x49d17a, 0xffd54a, 0xff5ad1, 0x5ad1ff, 0xff9a3a, 0xb06aff];
-function startDeathmatch() {
-  teardownOnline();
-  const defs = [{ color: DM_COLORS[0], isBot: false, name: '나' }];
-  for (let i = 1; i < 8; i++) defs.push({ color: DM_COLORS[i], isBot: true, name: '봇' + i });
+async function startDeathmatch() {
+  teardownOnline(); closeMenu();
+  const [pick] = await openKartSelect({ count: 1, title: '카트 선택 — 데스매치 vs AI' });
+  const defs = [{ color: pick.color, vehicle: pick.vehicle, isBot: false, name: '나' }];
+  for (let i = 1; i < 8; i++) defs.push({ color: DM_COLORS[i], vehicle: randVehicle(), isBot: true, name: '봇' + i });
   arenaWorld = createArenaWorld(defs);
   gameMode = 'DM';
   hud.classList.remove('split', 'online'); hud.classList.add('dm'); camWrap.classList.remove('split');
-  updateModeTag(); sizeTargets(); closeMenu();
+  updateModeTag(); sizeTargets();
 }
-function startDeathmatchLocal2() {
-  teardownOnline();
+async function startDeathmatchLocal2() {
+  teardownOnline(); closeMenu();
+  const picks = await openKartSelect({ count: 2, title: '카트 선택 — 데스매치 2인' });
   arenaWorld = createArenaWorld([
-    { color: 0xff5a3c, isBot: false, name: 'P1' },
-    { color: 0x3a8bff, isBot: false, name: 'P2' },
+    { color: picks[0].color, vehicle: picks[0].vehicle, isBot: false, name: 'P1' },
+    { color: picks[1].color, vehicle: picks[1].vehicle, isBot: false, name: 'P2' },
   ]);
   gameMode = 'DM2';
   hud.classList.remove('split', 'online'); hud.classList.add('dm'); camWrap.classList.remove('split');
-  updateModeTag(); sizeTargets(); closeMenu();
+  updateModeTag(); sizeTargets();
 }
 
 function bindNet() {
