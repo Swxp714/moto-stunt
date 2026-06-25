@@ -5,26 +5,27 @@
 import * as THREE from 'three';
 import { mat, rbox, ball, tube, cyl, wheel, at, link } from './_kit.js';
 
-function buildScooter() {
+function buildScooter(body = 0xe0552e) {
   const g = new THREE.Group();
+  const C = body;
 
   // --- Floorboard: low center of the step-through body ---
-  const floor = rbox(1.4, 0.22, 0.8, 0xe0552e, 0.11);
+  const floor = rbox(1.4, 0.22, 0.8, C, 0.11);
   g.add(at(floor, 0.05, 0.42, 0, 0, 0, 0));
 
   // --- Front leg-shield: tall rounded panel at front, tilted back ---
-  const shield = rbox(0.55, 1.25, 0.78, 0xe0552e, 0.2);
+  const shield = rbox(0.55, 1.25, 0.78, C, 0.2);
   g.add(at(shield, 0.78, 0.95, 0, 0, 0, 14));
 
   // --- Rear body hump: swelling orange mass under the seat ---
-  const hump = rbox(1.05, 0.85, 0.82, 0xe0552e, 0.28);
+  const hump = rbox(1.05, 0.85, 0.82, C, 0.28);
   g.add(at(hump, -0.55, 0.78, 0, 0, 0, 0));
   // sphere to round out the hump tail
-  const humpTail = ball(0.42, 0xe0552e);
+  const humpTail = ball(0.42, C);
   g.add(at(humpTail, -1.0, 0.72, 0, 0, 0, 0));
 
   // --- Front fender hugging the top of the front wheel ---
-  const fender = rbox(0.6, 0.2, 0.42, 0xe0552e, 0.09);
+  const fender = rbox(0.6, 0.2, 0.42, C, 0.09);
   g.add(at(fender, 0.92, 0.78, 0, 0, 0, 6));
 
   // --- Headlight: cream cylinder facing +X, set into the leg-shield front ---
@@ -67,9 +68,9 @@ function buildScooter() {
   return g;
 }
 
-function buildDirtBike() {
+function buildDirtBike(body = 0xf39320) {
   const g = new THREE.Group();
-  const ORANGE = 0xf39320, BLACK = 0x2a2a2c, GRAY = 0x8a8a8e;
+  const ORANGE = body, BLACK = 0x2a2a2c, GRAY = 0x8a8a8e;
   const R = 0.7;
 
   // --- Wheels: big knobby, gray spoke hubs (center y = R rests on y=0) ---
@@ -110,9 +111,9 @@ function buildDirtBike() {
   return g;
 }
 
-function buildSportBike() {
+function buildSportBike(body = 0xe8842a) {
   const g = new THREE.Group();
-  const ORANGE = 0xe8842a, DARK = 0x3c3a3e, BLACK = 0x2a2a2c, GRAY = 0x9a9a9e;
+  const ORANGE = body, DARK = 0x3c3a3e, BLACK = 0x2a2a2c, GRAY = 0x9a9a9e;
 
   // ---- Wheels: low stance, radius 0.6, thin spokes (center y = tireR = 0.6) ----
   g.add(at(wheel(0.6, 0.32, BLACK, GRAY, { spokes: 5 }), -1.18, 0.6, 0));
@@ -133,24 +134,27 @@ function buildSportBike() {
   // small windscreen, tilted back
   g.add(at(rbox(0.1, 0.34, 0.42, 0xc8c8d0, 0.05, { opacity: 0.5 }), 1.28, 1.55, 0, 0, 0, 42));
 
-  // ---- REAR seat cowl: orange, small rising tail (rounded, gentle point) ----
-  g.add(at(rbox(0.8, 0.4, 0.4, ORANGE, 0.2), -1.02, 1.34, 0, 0, 0, 18));
-  const tip = new THREE.Mesh(new THREE.ConeGeometry(0.17, 0.42, 16), mat(ORANGE));
-  g.add(at(tip, -1.46, 1.46, 0, 0, 0, 102)); // small tip pointing back, slightly up
+  // ---- REAR seat cowl: orange, clean angular tail tapering up & back ----
+  g.add(at(rbox(0.72, 0.38, 0.42, ORANGE), -0.98, 1.32, 0, 0, 0, 14));
+  g.add(at(rbox(0.5, 0.26, 0.34, ORANGE), -1.3, 1.46, 0, 0, 0, 22));
+  g.add(at(rbox(0.3, 0.16, 0.26, ORANGE), -1.52, 1.57, 0, 0, 0, 28));
 
   // ---- Front fork + low clip-on grips ----
   g.add(at(tube(0.85, 0.06, GRAY), 1.36, 0.95, 0, 0, 0, -22));
   g.add(at(tube(0.26, 0.05, BLACK), 1.12, 1.36, 0.32, 90, 0, 0));
   g.add(at(tube(0.26, 0.05, BLACK), 1.12, 1.36, -0.32, 90, 0, 0));
 
-  // ---- Exhaust: small dark cylinder low on the side, toward the back ----
-  g.add(at(cyl(0.1, 0.11, 0.7, DARK), -0.9, 0.6, -0.32, 0, 0, 90));
+  // ---- Muffler: chrome canister on the right side, angled up toward the tail ----
+  g.add(at(tube(0.8, 0.05, GRAY), -0.15, 0.6, -0.3, 0, 0, 62));                              // header pipe from engine
+  g.add(at(cyl(0.16, 0.14, 1.0, 0xc6c6cc, { sides: 12, rough: 0.35, metal: 0.4 }), -0.92, 0.78, -0.34, 0, 0, 74)); // canister
+  g.add(at(cyl(0.17, 0.17, 0.14, 0x2a2a2c, { sides: 12 }), -1.4, 0.92, -0.34, 0, 0, 74));    // dark outlet tip
 
   return g;
 }
 
-function buildWheelbarrow() {
+function buildWheelbarrow(body = 0xe0552e) {
   const g = new THREE.Group();
+  const C = body;
 
   // ----- Single front wheel (at +X, front-bottom). center y === tireR (0.5) so it rests on y=0 -----
   const w = wheel(0.5, 0.34, 0x2e2a28, 0xf2a024); // black tire, orange hub
@@ -158,10 +162,10 @@ function buildWheelbarrow() {
 
   // ----- Orange TUB (wider at top than bottom), tilted slightly nose-down -----
   const tub = new THREE.Group();
-  const tubBody = rbox(1.7, 0.8, 1.4, 0xe0552e, 0.22); // main bucket
+  const tubBody = rbox(1.7, 0.8, 1.4, C, 0.22); // main bucket
   tub.add(at(tubBody, 0, 0, 0));
   // taper: a smaller box tucked under for a narrower-bottom feel
-  const tubBottom = rbox(1.3, 0.3, 1.0, 0xe0552e, 0.2);
+  const tubBottom = rbox(1.3, 0.3, 1.0, C, 0.2);
   tub.add(at(tubBottom, 0, -0.42, 0));
   // recessed darker inset on top face -> hollow look
   const tubInset = rbox(1.5, 0.18, 1.2, 0xc0461f, 0.16);

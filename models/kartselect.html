@@ -40,6 +40,10 @@
   .p2 .chip.sel { border-color: var(--p2); transform: translateY(-3px) scale(1.06); box-shadow: 0 0 0 3px #fff, 0 6px 10px rgba(0,0,0,.25); }
   .chip.locked::after { content: 'OK'; position: absolute; top: -8px; right: -8px; background: #ffd23f; color: #5a3b00;
     font-size: 11px; font-weight: 800; padding: 2px 6px; border-radius: 8px; border: 2px solid #fff; transform: rotate(8deg); }
+  .clab { margin: 12px 2px 5px; font-size: 11px; color: #eaf6ff; opacity: .85; font-weight: 700; }
+  .swatches { display: flex; gap: 7px; flex-wrap: wrap; }
+  .sw { width: 30px; height: 30px; border-radius: 8px; border: 3px solid rgba(255,255,255,.5); box-shadow: inset 0 -3px 0 rgba(0,0,0,.18); transition: transform .08s; }
+  .sw.sel { border-color: #fff; transform: translateY(-2px) scale(1.12); box-shadow: 0 0 0 2px #ffd23f, 0 4px 8px rgba(0,0,0,.3); }
   .ready { margin-top: 12px; text-align: center; font-size: 18px; font-weight: 800; height: 22px; }
   .p1 .ready { color: #ffe08a; } .p2 .ready { color: #ffe08a; }
   .hint { position: absolute; bottom: 16px; left: 0; right: 0; text-align: center; color: #eaf6ff; font-size: 12px; opacity: .9; }
@@ -66,15 +70,19 @@
     <span class="ptag">P1</span>
     <div class="kname" id="nameP1"></div>
     <div class="strip" id="stripP1"></div>
+    <div class="clab">색상</div>
+    <div class="swatches" id="swP1"></div>
     <div class="ready" id="readyP1"></div>
   </div>
   <div class="panel p2" id="panelP2">
     <span class="ptag">P2</span>
     <div class="kname" id="nameP2"></div>
     <div class="strip" id="stripP2"></div>
+    <div class="clab">색상</div>
+    <div class="swatches" id="swP2"></div>
     <div class="ready" id="readyP2"></div>
   </div>
-  <div class="hint">P1 <b>A / D</b> 이동 · <b>LSHIFT</b> 선택　|　P2 <b>← / →</b> 이동 · <b>ENTER</b> 선택</div>
+  <div class="hint">P1 <b>A/D</b> 카트 · <b>W</b> 색 · <b>LSHIFT</b> 선택　|　P2 <b>←/→</b> 카트 · <b>↑</b> 색 · <b>ENTER</b> 선택</div>
 </div>
 <div id="count"></div>
 
@@ -84,6 +92,10 @@ import { VEHICLES, mountRider } from './vehicles.js';
 
 const ICONS = { scooter: '🛵', dirtbike: '🏍️', sportbike: '🏎️', wheelbarrow: '🛒' };
 const N = VEHICLES.length;
+// bike body colors players can pick in the waiting stage
+const PALETTE = [0xe8842a, 0xe14b4b, 0x4b86e1, 0x49b96a, 0x9b59d0, 0xf2c53d, 0x37c7c2, 0xec6aa8];
+const NC = PALETTE.length;
+const hex = (n) => '#' + n.toString(16).padStart(6, '0');
 
 // ---- 3D stage: two podiums, each shows the highlighted kart + rider --------
 const canvas = document.getElementById('c');
@@ -115,8 +127,8 @@ const stageP1 = podium(-4.0, 0xe8503a);
 const stageP2 = podium(4.0, 0x3a78e8);
 
 const state = {
-  p1: { idx: 0, locked: false, stage: stageP1, kart: null, tint: TINT.p1 },
-  p2: { idx: 1, locked: false, stage: stageP2, kart: null, tint: TINT.p2 },
+  p1: { idx: 0, colorIdx: 1, locked: false, stage: stageP1, kart: null, tint: TINT.p1 },
+  p2: { idx: 1, colorIdx: 2, locked: false, stage: stageP2, kart: null, tint: TINT.p2 },
 };
 
 function disposeKart(k) { if (!k) return; k.traverse(o => { if (o.isMesh) { o.geometry.dispose?.(); } }); k.parent?.remove(k); }
@@ -124,7 +136,7 @@ function rebuild(side) {
   const s = state[side];
   disposeKart(s.kart);
   const v = VEHICLES[s.idx];
-  const kart = v.build();
+  const kart = v.build(PALETTE[s.colorIdx]);
   if (v.seat) mountRider(kart, v.seat, s.tint);
   kart.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
   kart.position.y = 0.5;             // sit on the podium top
@@ -142,6 +154,15 @@ function buildStrip(side) {
     strip.appendChild(c);
   });
 }
+function buildStripSwatches(side) {
+  const sw = document.getElementById(side === 'p1' ? 'swP1' : 'swP2');
+  sw.innerHTML = '';
+  PALETTE.forEach((col, i) => {
+    const d = document.createElement('div'); d.className = 'sw'; d.dataset.i = i;
+    d.style.background = hex(col);
+    sw.appendChild(d);
+  });
+}
 function refresh(side) {
   const s = state[side];
   document.getElementById(side === 'p1' ? 'nameP1' : 'nameP2').textContent = VEHICLES[s.idx].name;
@@ -150,12 +171,19 @@ function refresh(side) {
     c.classList.toggle('sel', i === s.idx);
     c.classList.toggle('locked', s.locked && i === s.idx);
   });
+  const sw = document.getElementById(side === 'p1' ? 'swP1' : 'swP2');
+  [...sw.children].forEach((c, i) => c.classList.toggle('sel', i === s.colorIdx));
   document.getElementById(side === 'p1' ? 'readyP1' : 'readyP2').textContent = s.locked ? '✔ READY' : '';
 }
 
 function move(side, dir) {
   const s = state[side]; if (s.locked) return;
   s.idx = (s.idx + dir + N) % N;
+  rebuild(side); refresh(side);
+}
+function cycleColor(side, dir = 1) {
+  const s = state[side]; if (s.locked) return;
+  s.colorIdx = (s.colorIdx + dir + NC) % NC;
   rebuild(side); refresh(side);
 }
 function toggleLock(side) {
@@ -186,9 +214,11 @@ addEventListener('keydown', (e) => {
   if (counting) return;
   if (e.code === 'KeyA') move('p1', -1);
   else if (e.code === 'KeyD') move('p1', +1);
+  else if (e.code === 'KeyW' || e.code === 'KeyS') cycleColor('p1', e.code === 'KeyS' ? -1 : 1);
   else if (e.code === 'ShiftLeft') toggleLock('p1');
   else if (e.code === 'ArrowLeft') move('p2', -1);
   else if (e.code === 'ArrowRight') move('p2', +1);
+  else if (e.code === 'ArrowUp' || e.code === 'ArrowDown') cycleColor('p2', e.code === 'ArrowDown' ? -1 : 1);
   else if (e.code === 'Enter') toggleLock('p2');
 });
 
@@ -202,14 +232,15 @@ function loop() {
   requestAnimationFrame(loop);
 }
 
-buildStrip('p1'); buildStrip('p2');
+buildStrip('p1'); buildStrip('p2'); buildStripSwatches('p1'); buildStripSwatches('p2');
 rebuild('p1'); rebuild('p2'); refresh('p1'); refresh('p2');
 loop();
 
 // test hooks
 window.__ks = {
-  move, lock: toggleLock, state,
+  move, lock: toggleLock, cycleColor, state,
   set(side, i) { state[side].idx = i; rebuild(side); refresh(side); },
+  color(side, ci) { state[side].colorIdx = ci; rebuild(side); refresh(side); },
 };
 </script>
 </body>
