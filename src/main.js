@@ -59,7 +59,12 @@ const CFG = {
   speedWarp: 0.55,   // barrel screen-warp strength at top speed
   maxPitch: 1.0, pitchRiseRate: 2.2, pitchFallRate: 2.5, trackLength: 3000,
   respawnFreeze: 1.0, invincibleTime: 1.5,
-  pixelSize: 4,            // low-res RT downscale factor (lower = sharper shapes)
+  pixelSize: 4,            // (legacy fallback) low-res RT downscale factor
+  // responsive pixel grid: target a FIXED dot-row count so the dot look stays consistent
+  // across window sizes (small windows get smaller dots, not fewer dots). ps derived per-resize.
+  targetH: 270,            // target dot-rows for the scene (1080p → ps 4, matches the old look)
+  dotMin: 2, dotMax: 5,    // clamp screen-px per dot (min readable .. max chunky)
+  aspectRef: 1.7778,       // 16:9 — below this, hold horizontal FOV constant (no UI clipping)
   colorSteps: 6, dither: 0.65,  // pixel-art grade — softened so bike shapes read clearly
 };
 const STATE = { RIDING: 'riding', CRASHED: 'crashed', FINISHED: 'finished' };
@@ -994,25 +999,39 @@ const quadScene = new THREE.Scene();
 const quadCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
 quadScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), compositeMat));
 
+// Responsive pixel grid: derive an INTEGER divisor from the window so the dot-row count
+// (lowH) stays ~constant (CFG.targetH) instead of collapsing on small windows.
+function computePixelGrid(contentW, contentH) {
+  const ps = Math.max(CFG.dotMin, Math.min(CFG.dotMax, Math.round(contentH / CFG.targetH)));
+  return { ps, lowW: Math.max(2, Math.round(contentW / ps)), lowH: Math.max(2, Math.round(contentH / ps)) };
+}
+// Hold horizontal FOV constant below aspectRef (narrow/portrait) so fixed-width in-canvas UI
+// never clips; wide aspects keep the base vertical FOV unchanged.
+function fovForAspect(baseFov, aspect) {
+  if (aspect >= CFG.aspectRef) return baseFov;
+  const hFovRef = 2 * Math.atan(Math.tan(baseFov * Math.PI / 360) * CFG.aspectRef);
+  return 2 * Math.atan(Math.tan(hFovRef / 2) / aspect) * 180 / Math.PI;
+}
 function sizeTargets() {
   const W = window.innerWidth, H = window.innerHeight;
-  const ps = CFG.pixelSize;
   const split = gameMode === '2P' || gameMode === 'DM2';
   const halfW = split ? W / 2 : W;
-  const lowW = Math.max(2, Math.floor(halfW / ps));
-  const lowH = Math.max(2, Math.floor(H / ps));
-  rts[0].setSize(lowW, lowH);
-  rts[1].setSize(lowW, lowH);
-  const aspect = halfW / H;
-  worlds[0].camera.aspect = aspect; worlds[0].camera.updateProjectionMatrix();
-  worlds[1].camera.aspect = aspect; worlds[1].camera.updateProjectionMatrix();
+  const grid = computePixelGrid(halfW, H);
+  rts[0].setSize(grid.lowW, grid.lowH);
+  rts[1].setSize(grid.lowW, grid.lowH);
+  renderer.setSize(W, H);                 // keep the main backbuffer + canvas matched to the window (Bayer alignment)
+  const aspect = halfW / H, fMain = fovForAspect(62, aspect);
+  worlds[0].camera.fov = fMain; worlds[0].camera.aspect = aspect; worlds[0].camera.updateProjectionMatrix();
+  worlds[1].camera.fov = fMain; worlds[1].camera.aspect = aspect; worlds[1].camera.updateProjectionMatrix();
   compositeMat.uniforms.uResolution.value.set(W, H);
   compositeMat.uniforms.uSplit.value = split ? 1 : 0;
   compositeMat.uniforms.uTint.value = split ? 0.4 : 0;
   if (arenaWorld) {
-    arenaWorld.cameras.forEach(c => { c.aspect = halfW / H; c.updateProjectionMatrix(); });
-    arenaWorld.winCam.aspect = halfW / H; arenaWorld.winCam.updateProjectionMatrix();
+    const fDm = fovForAspect(60, aspect);
+    arenaWorld.cameras.forEach(c => { c.fov = fDm; c.aspect = aspect; c.updateProjectionMatrix(); });
+    arenaWorld.winCam.fov = fDm; arenaWorld.winCam.aspect = aspect; arenaWorld.winCam.updateProjectionMatrix();
   }
+  window.__grid = { ps: grid.ps, lowW: grid.lowW, lowH: grid.lowH, W, H, aspect: +aspect.toFixed(3), fMain: +fMain.toFixed(1) };
 }
 
 // ---------------------------------------------------------------------------
@@ -1417,8 +1436,18 @@ function rollHero() {
 }
 function resizeHero() {   // render low-res then upscale (CSS pixelated) to keep the dot look
   if (!heroR) return;
-  heroR.setSize(Math.max(2, Math.floor(innerWidth / 4)), Math.max(2, Math.floor(innerHeight / 4)), false);
-  heroCam.aspect = innerWidth / innerHeight; heroCam.updateProjectionMatrix();
+  const g = computePixelGrid(innerWidth, innerHeight);   // same grid as the game → consistent dot size
+  heroR.setSize(g.lowW, g.lowH, false);
+  const aspect = innerWidth / innerHeight;
+  heroCam.fov = fovForAspect(32, aspect);
+  heroCam.aspect = aspect; heroCam.updateProjectionMatrix();
+  // keep EXIT/설정 in frame on narrow/portrait: pull them inward to the visible half-width if needed
+  if (heroExit && heroSettings) {
+    const visHalfW = (12.8 - 2) * Math.tan(heroCam.fov * Math.PI / 360) * aspect;   // world half-width at the button plane (z=2)
+    const sideX = Math.max(2.2, Math.min(3.9, visHalfW - 1.15));
+    heroExit.position.x = -sideX; heroExit.userData.base.x = -sideX;
+    heroSettings.position.x = sideX; heroSettings.userData.base.x = sideX;
+  }
 }
 function doExit() {
   if (!confirm('게임을 종료할까요?')) return;
