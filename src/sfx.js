@@ -126,5 +126,46 @@ try {
 function setVolume(v) { zzfxV = Math.max(0, Math.min(1, v)); }
 function getVolume() { return zzfxV; }
 
-export { play, init, setVolume, getVolume };
-export default { play, init, setVolume, getVolume };
+/* ------------------------------------------------------------------ *
+ * Continuous engine drone (부릉부릉) — a real Web-Audio loop, not a
+ * one-shot. Sawtooth + sub square + vibrato LFO; pitch & gain follow
+ * speed. Respects window.__muted and the master volume.
+ * ------------------------------------------------------------------ */
+let eng = null;
+function engineStart() {
+  try {
+    if (eng || !zzfxX) return;
+    const ctx = zzfxX; if (ctx.state === 'suspended') ctx.resume();
+    const gain = ctx.createGain(); gain.gain.value = 0; gain.connect(ctx.destination);
+    const osc = ctx.createOscillator(); osc.type = 'sawtooth'; osc.frequency.value = 64;
+    const sub = ctx.createOscillator(); sub.type = 'square'; sub.frequency.value = 32;
+    const subG = ctx.createGain(); subG.gain.value = 0.45; sub.connect(subG); subG.connect(gain);
+    osc.connect(gain);
+    const lfo = ctx.createOscillator(); lfo.type = 'sine'; lfo.frequency.value = 10;   // 부릉부릉 throb
+    const lfoG = ctx.createGain(); lfoG.gain.value = 7; lfo.connect(lfoG); lfoG.connect(osc.frequency);
+    osc.start(); sub.start(); lfo.start();
+    eng = { osc, sub, gain, lfo };
+  } catch (e) { /* never throw */ }
+}
+function engineSet(speed01) {   // speed01 ~ 0..1 (idle..top)
+  try {
+    if (!eng) return; const t = zzfxX.currentTime;
+    const s = Math.max(0, Math.min(1.3, speed01 || 0));
+    const base = 58 + s * 120;
+    eng.osc.frequency.setTargetAtTime(base, t, 0.05);
+    eng.sub.frequency.setTargetAtTime(base * 0.5, t, 0.05);
+    eng.lfo.frequency.setTargetAtTime(8 + s * 10, t, 0.1);
+    const muted = (typeof window !== 'undefined' && window.__muted === true);
+    eng.gain.gain.setTargetAtTime(muted ? 0 : zzfxV * (0.09 + s * 0.14), t, 0.07);
+  } catch (e) { /* ignore */ }
+}
+function engineStop() {
+  try {
+    if (!eng) return; const e = eng; eng = null;
+    e.gain.gain.setTargetAtTime(0, zzfxX.currentTime, 0.12);
+    setTimeout(() => { try { e.osc.stop(); e.sub.stop(); e.lfo.stop(); e.gain.disconnect(); } catch (_) {} }, 400);
+  } catch (e) { /* ignore */ }
+}
+
+export { play, init, setVolume, getVolume, engineStart, engineSet, engineStop };
+export default { play, init, setVolume, getVolume, engineStart, engineSet, engineStop };

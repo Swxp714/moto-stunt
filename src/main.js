@@ -585,7 +585,7 @@ function createArenaWorld(riderDefs, modeKey = 'score') {
   const expPos = new Float32Array(EXP_MAX * 3).fill(-9999), expVel = new Float32Array(EXP_MAX * 3), expLife = new Float32Array(EXP_MAX);
   let expIdx = 0;
   const expGeo = new THREE.BufferGeometry(); expGeo.setAttribute('position', new THREE.BufferAttribute(expPos, 3));
-  scene.add(new THREE.Points(expGeo, new THREE.PointsMaterial({ color: 0xff8a3a, size: 2.6, sizeAttenuation: false, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false })));
+  { const p = new THREE.Points(expGeo, new THREE.PointsMaterial({ color: 0xff8a3a, size: 2.6, sizeAttenuation: false, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false })); p.frustumCulled = false; scene.add(p); }
   function spawnExplosion(x, y, z) {
     for (let k = 0; k < 50; k++) {
       const i = expIdx; expIdx = (expIdx + 1) % EXP_MAX;
@@ -605,13 +605,45 @@ function createArenaWorld(riderDefs, modeKey = 'score') {
     expGeo.attributes.position.needsUpdate = true;
   }
   function clearExplosion() { for (let i = 0; i < EXP_MAX; i++) { expLife[i] = 0; expPos[i*3+1] = -9999; } expGeo.attributes.position.needsUpdate = true; }
+  // shattered-bike debris: chunky boxes in the dead rider's color that fly out, spin, bounce, shrink
+  const DEBRIS_MAX = 56, debris = [];
+  for (let i = 0; i < DEBRIS_MAX; i++) {
+    const m = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshStandardMaterial({ flatShading: true, roughness: 0.6 }));
+    m.visible = false; m.frustumCulled = false; scene.add(m);
+    debris.push({ m, vx: 0, vy: 0, vz: 0, sx: 0, sy: 0, sz: 0, life: 0 });
+  }
+  let debrisIdx = 0;
+  function spawnDebris(x, y, z, color) {
+    for (let k = 0; k < 12; k++) {
+      const d = debris[debrisIdx]; debrisIdx = (debrisIdx + 1) % DEBRIS_MAX;
+      const s = 0.26 + Math.random() * 0.5; d.m.scale.set(s, s * (0.55 + Math.random() * 0.7), s);
+      d.m.material.color.setHex(color); d.m.position.set(x, y, z); d.m.visible = true;
+      d.m.rotation.set(Math.random() * 6.28, Math.random() * 6.28, Math.random() * 6.28);
+      const th = Math.random() * Math.PI * 2, sp = 5 + Math.random() * 9;
+      d.vx = Math.cos(th) * sp; d.vz = Math.sin(th) * sp; d.vy = 4 + Math.random() * 8;
+      d.sx = (Math.random() - 0.5) * 16; d.sy = (Math.random() - 0.5) * 16; d.sz = (Math.random() - 0.5) * 16;
+      d.life = 1.1 + Math.random() * 0.6;
+    }
+  }
+  function updateDebris(dt) {
+    for (const d of debris) {
+      if (d.life <= 0) continue;
+      d.life -= dt; if (d.life <= 0) { d.m.visible = false; continue; }
+      d.vy -= 22 * dt;
+      d.m.position.x += d.vx * dt; d.m.position.y += d.vy * dt; d.m.position.z += d.vz * dt;
+      if (d.m.position.y < 0.16) { d.m.position.y = 0.16; d.vy *= -0.38; d.vx *= 0.66; d.vz *= 0.66; }   // bounce on the floor
+      d.m.rotation.x += d.sx * dt; d.m.rotation.y += d.sy * dt; d.m.rotation.z += d.sz * dt;
+      if (d.life < 0.35) d.m.scale.multiplyScalar(0.9);   // shrink away at the end
+    }
+  }
+  function clearDebris() { for (const d of debris) { d.life = 0; d.m.visible = false; } }
 
   // --- wheelie sparks (continuous) ---
   const SPK_MAX = 120;
   const spkPos = new Float32Array(SPK_MAX * 3).fill(-9999), spkVel = new Float32Array(SPK_MAX * 3), spkLife = new Float32Array(SPK_MAX);
   let spkIdx = 0;
   const spkGeo = new THREE.BufferGeometry(); spkGeo.setAttribute('position', new THREE.BufferAttribute(spkPos, 3));
-  scene.add(new THREE.Points(spkGeo, new THREE.PointsMaterial({ color: 0xffd84a, size: 5, sizeAttenuation: false, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false })));
+  { const p = new THREE.Points(spkGeo, new THREE.PointsMaterial({ color: 0xffd84a, size: 5, sizeAttenuation: false, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false })); p.frustumCulled = false; scene.add(p); }
   function spawnSpark(x, y, z) {
     const i = spkIdx; spkIdx = (spkIdx + 1) % SPK_MAX;
     spkPos[i*3] = x; spkPos[i*3+1] = y; spkPos[i*3+2] = z;
@@ -627,7 +659,7 @@ function createArenaWorld(riderDefs, modeKey = 'score') {
   const fwPos = new Float32Array(FW_MAX*3).fill(-9999), fwVel = new Float32Array(FW_MAX*3), fwLife = new Float32Array(FW_MAX), fwCol = new Float32Array(FW_MAX*3);
   let fwIdx = 0;
   const fwGeo = new THREE.BufferGeometry(); fwGeo.setAttribute('position', new THREE.BufferAttribute(fwPos,3)); fwGeo.setAttribute('color', new THREE.BufferAttribute(fwCol,3));
-  scene.add(new THREE.Points(fwGeo, new THREE.PointsMaterial({ size: 2.6, sizeAttenuation: false, vertexColors: true, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false })));
+  { const p = new THREE.Points(fwGeo, new THREE.PointsMaterial({ size: 2.6, sizeAttenuation: false, vertexColors: true, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false })); p.frustumCulled = false; scene.add(p); }
   const FWPAL = [[1,0.3,0.3],[1,0.8,0.2],[0.4,0.8,1],[0.6,1,0.5],[1,0.5,0.9],[1,1,1]];
   function launchFw(x,y,z){ const c=FWPAL[(Math.random()*FWPAL.length)|0], sp=9+Math.random()*6; for(let k=0;k<40;k++){ const i=fwIdx; fwIdx=(fwIdx+1)%FW_MAX; const th=Math.random()*Math.PI*2, ph=Math.acos(2*Math.random()-1), s=sp*(0.6+Math.random()*0.4); fwPos[i*3]=x;fwPos[i*3+1]=y;fwPos[i*3+2]=z; fwVel[i*3]=Math.sin(ph)*Math.cos(th)*s; fwVel[i*3+1]=Math.cos(ph)*s; fwVel[i*3+2]=Math.sin(ph)*Math.sin(th)*s; fwCol[i*3]=c[0];fwCol[i*3+1]=c[1];fwCol[i*3+2]=c[2]; fwLife[i]=1.0+Math.random()*0.6; } fwGeo.attributes.color.needsUpdate=true; }
   function updateFw(dt){ for(let i=0;i<FW_MAX;i++){ if(fwLife[i]<=0)continue; fwLife[i]-=dt; if(fwLife[i]<=0){fwPos[i*3+1]=-9999;continue;} fwVel[i*3+1]-=9*dt; fwPos[i*3]+=fwVel[i*3]*dt; fwPos[i*3+1]+=fwVel[i*3+1]*dt; fwPos[i*3+2]+=fwVel[i*3+2]*dt; } fwGeo.attributes.position.needsUpdate=true; }
@@ -648,7 +680,7 @@ function createArenaWorld(riderDefs, modeKey = 'score') {
       r.lives = mode.maxLives === 0 ? Infinity : mode.maxLives;
       clearRiderTrail(r);
     });
-    clearExplosion(); clearFx();
+    clearExplosion(); clearDebris(); clearFx();
   }
   // respawn a downed rider at a random spot away from trails (brief invincibility)
   function respawnRider(r) {
@@ -690,7 +722,7 @@ function createArenaWorld(riderDefs, modeKey = 'score') {
     r.alive = false; r.bike.visible = false; r.boost = 0; r.shield = 0; r.lastKiller = killerIdx;
     r.lives = Math.max(0, r.lives - 1);              // Infinity-1 = Infinity (score mode)
     r.respawnT = r.lives > 0 ? DM.respawnDelay : 0;  // 0 lives -> eliminated (no respawn)
-    spawnExplosion(r.x, 1.4, r.z); clearRiderTrail(r);
+    spawnExplosion(r.x, 1.4, r.z); spawnDebris(r.x, 1.2, r.z, r.color); clearRiderTrail(r);
     if (r.idx === 0) { S.cause = cause; sfx.play('dm_death'); scorePop('-1', 'minus'); }
   }
   function topScorer() {
@@ -722,7 +754,7 @@ function createArenaWorld(riderDefs, modeKey = 'score') {
     });
   }
   function update(dt, inputs) {
-    if (paused) { positionAll(dt); updateExplosion(dt); updateSparks(dt); updateFw(dt); return; }
+    if (paused) { positionAll(dt); updateExplosion(dt); updateDebris(dt); updateSparks(dt); updateFw(dt); return; }
     if (S.over) {   // freeze; victory camera orbits the winner + fireworks
       if (S.winner >= 0) {
         const w = riders[S.winner];
@@ -731,7 +763,7 @@ function createArenaWorld(riderDefs, modeKey = 'score') {
         winCam.lookAt(w.x, 2, w.z);
         fwT -= dt; if (fwT <= 0) { fwT = 0.45; launchFw(w.x + (Math.random() - 0.5) * 18, 10 + Math.random() * 10, w.z + (Math.random() - 0.5) * 18); }
       }
-      updateExplosion(dt); updateSparks(dt); updateFw(dt); positionAll(dt); return;
+      updateExplosion(dt); updateDebris(dt); updateSparks(dt); updateFw(dt); positionAll(dt); return;
     }
     S.time += dt;
     if (mode.timer > 0) S.timeLeft = Math.max(0, S.timeLeft - dt);          // score mode counts down
@@ -813,7 +845,7 @@ function createArenaWorld(riderDefs, modeKey = 'score') {
       const sfx2 = Math.sin(r.heading), sfz2 = -Math.cos(r.heading);   // spew sparks from the rear wheel
       for (let s = 0; s < 4; s++) spawnSpark(r.x - sfx2 * 1.3 + (Math.random() - 0.5) * 0.7, 0.3, r.z - sfz2 * 1.3 + (Math.random() - 0.5) * 0.7);
     }
-    updateExplosion(dt); updateSparks(dt); updateFw(dt);
+    updateExplosion(dt); updateDebris(dt); updateSparks(dt); updateFw(dt);
     positionAll(dt);
   }
   reset();
@@ -1262,7 +1294,7 @@ function initHero() {
   // spark burst for the wheelie flyoff
   const HN = 80, hp = new Float32Array(HN * 3).fill(-9999), hv = new Float32Array(HN * 3), hl = new Float32Array(HN);
   const hgeo = new THREE.BufferGeometry(); hgeo.setAttribute('position', new THREE.BufferAttribute(hp, 3));
-  heroScene.add(new THREE.Points(hgeo, new THREE.PointsMaterial({ color: 0xffd84a, size: 4, sizeAttenuation: false, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false })));
+  { const p = new THREE.Points(hgeo, new THREE.PointsMaterial({ color: 0xffd84a, size: 4, sizeAttenuation: false, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false })); p.frustumCulled = false; heroScene.add(p); }
   heroSpk = { hp, hv, hl, hgeo, i: 0, N: HN };
 }
 function rollHero() {
@@ -1768,10 +1800,15 @@ function renderMiniViews() {
 addEventListener('resize', sizeTargets);
 
 const clock = new THREE.Clock();
+let engineOn = false;
 function loop() {
   const dt = Math.min(clock.getDelta(), 0.05);
   if (inputSource === 'motion' && tracker.ready) tracker.detect(performance.now());
   updateMotionDbg();
+
+  // continuous engine drone (부릉부릉) — on while playing, pitch follows local speed
+  if (!inMenu && !engineOn) { sfx.engineStart(); engineOn = true; }
+  else if (inMenu && engineOn) { sfx.engineStop(); engineOn = false; }
 
   // ---- TRAIL DEATHMATCH branch ----
   if ((gameMode === 'DM' || gameMode === 'DM2' || gameMode === 'DMO') && arenaWorld) {
@@ -1819,6 +1856,7 @@ function loop() {
     } else hideDmStandings();
     // high-speed screen warp when wheelie-boosted (my rider)
     const r0 = arenaWorld.riders[mySlot];
+    if (engineOn) sfx.engineSet(r0.alive ? r0.speed / (DM.moveSpeed * 2.4) : 0.18);
     compositeMat.uniforms.uSpeedL.value = Math.min(1, Math.max(0, (r0.speed - DM.moveSpeed) / (DM.moveSpeed * (DM.wheelieMul - 1))));
     compositeMat.uniforms.uSpeedR.value = 0;
     compositeMat.uniforms.uFlashL.value.set(1, 1, 1, 0); compositeMat.uniforms.uFlashR.value.set(1, 1, 1, 0);
@@ -1835,6 +1873,7 @@ function loop() {
 
   const nWorlds = gameMode === '2P' ? 2 : 1;
   for (let i = 0; i < nWorlds; i++) worlds[i].update(dt, inputFor(i));
+  if (engineOn) { const g0 = worlds[0].game; sfx.engineSet((g0.speed || 0) / 35 + (g0.speedFactor || 0) * 0.3); }
 
   // online: stream my state ~12Hz + detect my finish (first to finish wins)
   if (online.active && net) {
