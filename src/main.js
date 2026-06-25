@@ -971,6 +971,8 @@ const els = {
   dmWarn: document.getElementById('dmWarn'),
   dmScore: document.getElementById('dmScore'), dmItem: document.getElementById('dmItem'), dmItemIcon: document.getElementById('dmItemIcon'),
   dmTimeLabel: document.getElementById('dmTimeLabel'),
+  dmStandings: document.getElementById('dmStandings'), dmStandingsRows: document.getElementById('dmStandingsRows'),
+  dmStandingsHint: document.getElementById('dmStandingsHint'),
   modeTagVal: document.getElementById('modeTagVal'),
   finishBanner: document.getElementById('finishBanner'), finishBig: document.getElementById('finishBig'), finishSub: document.getElementById('finishSub'),
 };
@@ -1005,6 +1007,19 @@ function updateDmHud(aw, mySlot) {
   els.dmItem.classList.toggle('has', !!has);
   if (has) els.dmItemIcon.textContent = ITEM_ICON[me.item] || '❓';
 }
+function showDmStandings(aw, mySlot, winner, showHint) {
+  const ranked = aw.riders.filter(r => !r.startDead).sort((a, b) => b.score - a.score);
+  els.dmStandingsRows.innerHTML = ranked.map((r, i) => {
+    const col = '#' + (r.color >>> 0).toString(16).padStart(6, '0');
+    const win = r.idx === winner;
+    return `<div class="srow${win ? ' win' : ''}"><span class="rk">${win ? '👑' : i + 1}</span>` +
+      `<span class="nm" style="color:${col}">${r.idx === mySlot ? '나' : 'P' + (r.idx + 1)}</span>` +
+      `<span class="sc">${r.score}</span></div>`;
+  }).join('');
+  els.dmStandingsHint.style.display = showHint ? '' : 'none';
+  els.dmStandings.classList.add('show');
+}
+function hideDmStandings() { els.dmStandings.classList.remove('show'); }
 function showFinish(big, sub) { els.finishBig.textContent = big; els.finishSub.textContent = sub; els.finishBanner.classList.add('show'); }
 function hideFinish() { els.finishBanner.classList.remove('show'); }
 
@@ -1673,7 +1688,8 @@ function loop() {
       const mine = dst.winner === mySlot;
       const detail = isScore ? `최고점 ${wScore}점` : '최후의 생존 🏁';
       els.dmBannerSub.textContent = `${mine ? '🎉 ' : ''}${detail}${odm ? '' : ' · R 재시작'}`;
-    }
+      showDmStandings(arenaWorld, mySlot, dst.winner, !odm);
+    } else hideDmStandings();
     // high-speed screen warp when wheelie-boosted (my rider)
     const r0 = arenaWorld.riders[mySlot];
     compositeMat.uniforms.uSpeedL.value = Math.min(1, Math.max(0, (r0.speed - DM.moveSpeed) / (DM.moveSpeed * (DM.wheelieMul - 1))));
