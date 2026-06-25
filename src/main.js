@@ -7,6 +7,20 @@ import * as THREE from 'three';
 import { HandTracker, computeControls } from './hands.js';
 import { makeBayerTexture } from './pixelart.js';
 import { Net } from './net.js';
+import { VEHICLES, mountRider } from '../models/vehicles.js';
+
+// soft/angular 3D vehicle models keyed for in-game use
+const VMAP = Object.fromEntries(VEHICLES.map(v => [v.key, v]));
+const DEFAULT_VEHICLE = 'dirtbike';
+// build a vehicle model oriented for the game (forward = -Z) with a rider mounted
+function buildVehicleModel(key, bodyColor, riderColor) {
+  const v = VMAP[key] || VMAP[DEFAULT_VEHICLE];
+  const inner = v.build(bodyColor);
+  if (v.seat) mountRider(inner, v.seat, riderColor != null ? riderColor : 0xf4ead6);
+  inner.rotation.y = Math.PI / 2;        // model faces +X -> rotate so forward is -Z
+  inner.scale.setScalar(1.4);            // size up for the in-game camera
+  return inner;
+}
 
 // ---------------------------------------------------------------------------
 // Tuning (mirror of GAMEPLAN §10)
@@ -81,36 +95,15 @@ function buildRoad() {
   return g;
 }
 
-function buildBike(bodyColor) {
+// Builds the selected soft/angular 3D vehicle as a game bike pivot.
+//   bodyColor: vehicle body tint;  opts: { vehicle: key, rider: riderColor }
+function buildBike(bodyColor, opts = {}) {
   const pivot = new THREE.Group();
-  const wheelR = 0.55, wheelBase = 2.4;
-  const bodyMat = new THREE.MeshLambertMaterial({ color: bodyColor, flatShading: true });
-  const seatMat = new THREE.MeshLambertMaterial({ color: 0x2b2b38, flatShading: true });
-  const wheelMat = new THREE.MeshLambertMaterial({ color: 0x2a2a30, flatShading: true });
-  const rimMat = new THREE.MeshLambertMaterial({ color: 0xe2e8f2, flatShading: true });
-  const riderMat = new THREE.MeshLambertMaterial({ color: 0x3a78ff, flatShading: true });
-  const body = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.7, wheelBase + 0.6), bodyMat);
-  body.position.set(0, wheelR + 0.45, -wheelBase / 2); pivot.add(body);
-  const seat = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.4, 1.3), seatMat);
-  seat.position.set(0, wheelR + 0.95, -wheelBase / 2 + 0.1); pivot.add(seat);
-  const rider = new THREE.Mesh(new THREE.BoxGeometry(0.6, 1.1, 0.6), riderMat);
-  rider.position.set(0, wheelR + 1.6, -wheelBase / 2 + 0.2); pivot.add(rider);
-  const head = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.45, 0.45), riderMat);
-  head.position.set(0, wheelR + 2.35, -wheelBase / 2 + 0.2); pivot.add(head);
-  const wheelGeo = new THREE.CylinderGeometry(wheelR, wheelR, 0.34, 16); wheelGeo.rotateZ(Math.PI / 2);
-  const rimGeo = new THREE.TorusGeometry(wheelR * 0.72, 0.08, 6, 18); rimGeo.rotateY(Math.PI / 2);
-  const hubGeo = new THREE.CylinderGeometry(0.13, 0.13, 0.42, 8); hubGeo.rotateZ(Math.PI / 2);
-  function makeWheel() {
-    const wg = new THREE.Group();
-    wg.add(new THREE.Mesh(wheelGeo, wheelMat));      // tire
-    wg.add(new THREE.Mesh(rimGeo, rimMat));           // bright rim
-    wg.add(new THREE.Mesh(hubGeo, rimMat));           // hub
-    wg.add(new THREE.Mesh(new THREE.BoxGeometry(0.43, 0.08, wheelR * 1.3), rimMat)); // spoke bar (shows spin)
-    return wg;
-  }
-  const rear = makeWheel(); rear.position.set(0, wheelR, 0); pivot.add(rear);
-  const front = makeWheel(); front.position.set(0, wheelR, -wheelBase); pivot.add(front);
-  pivot.userData.wheels = [rear, front];
+  const inner = buildVehicleModel(opts.vehicle || DEFAULT_VEHICLE, bodyColor, opts.rider);
+  pivot.add(inner);
+  // collect wheel groups so the game can spin them (about their local Z axle)
+  pivot.userData.wheels = [];
+  inner.traverse(o => { if (o.userData && o.userData.isWheel) pivot.userData.wheels.push(o); });
   return pivot;
 }
 
@@ -347,7 +340,7 @@ function createWorld(bodyColor) {
     bike.position.set(game.laneX, 0, -game.distance);
     bike.rotation.x = game.state === STATE.CRASHED ? game.pitch + game.crashTilt : game.pitch;
     bike.visible = !(game.invincible > 0 && Math.floor(performance.now() / 90) % 2 === 0);
-    for (const wm of bike.userData.wheels) wm.rotation.x -= game.speed * dt * 0.6;
+    for (const wm of bike.userData.wheels) wm.rotation.z -= game.speed * dt * 0.6;
 
     // spotlight follows the player from above; sparks advance
     spot.position.set(game.laneX, 16, -game.distance + 4);

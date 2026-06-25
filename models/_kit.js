@@ -46,6 +46,7 @@ export function cyl(rTop, rBot, h, color, opts = {}) {
 // a faceted low-poly wheel. Axle along Z (rolls toward +X). Returns a Group.
 export function wheel(tireR, width, tireColor = 0x2b2725, hubColor = 0xb9b9bd, opts = {}) {
   const g = new THREE.Group();
+  g.userData.isWheel = true;   // tagged so the game can spin them
   const sides = opts.sides ?? 12;                 // faceted, not smooth
   const tire = new THREE.Mesh(new THREE.CylinderGeometry(tireR, tireR, width, sides), mat(tireColor, { rough: 0.92 }));
   tire.rotation.x = Math.PI / 2; tire.castShadow = tire.receiveShadow = true; g.add(tire);
