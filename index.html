@@ -155,6 +155,22 @@
     .dm-survive b { font-size: 28px; color: var(--cyan); }
     #dmBanner .big { color: var(--red); }
     #dmBanner.win .big { color: var(--yellow); }
+    /* score-mode: leaderboard + item slot */
+    #dmScore { position: absolute; top: 14px; left: 14px; display: none; font-family: var(--font); font-size: 12px; }
+    #hud.dm #dmScore { display: block; }
+    #dmScore .row { display: flex; gap: 8px; align-items: center; padding: 3px 9px; border-radius: 6px;
+      margin-bottom: 3px; background: rgba(8,10,18,.55); }
+    #dmScore .row.me { outline: 2px solid #fff; }
+    #dmScore .row .rk { width: 16px; color: var(--dim); }
+    #dmScore .row .nm { width: 58px; font-weight: 700; }
+    #dmScore .row .sc { margin-left: auto; font-weight: 800; color: #fff; min-width: 22px; text-align: right; }
+    #dmItem { position: absolute; bottom: 64px; left: 50%; transform: translateX(-50%);
+      display: none; flex-direction: column; align-items: center; gap: 4px; font-family: var(--font); }
+    #hud.dm #dmItem.has { display: flex; }
+    #dmItem .box { width: 58px; height: 58px; border-radius: 14px; background: rgba(255,255,255,.14);
+      border: 3px solid #ffd23f; box-shadow: 0 0 16px rgba(255,210,63,.5); display: flex; align-items: center;
+      justify-content: center; font-size: 32px; }
+    #dmItem .key { font-size: 11px; color: #ffd23f; font-weight: 700; letter-spacing: .05em; }
 
     /* TETR.IO-style opponent mini-views (right column) */
     #miniViews { position: fixed; inset: 0; z-index: 12; pointer-events: none; display: none; }
@@ -198,7 +214,9 @@
     <div class="warn" id="p1warn">! WARNING ! 뒤집힘 주의</div>
     <div class="warn" id="p2warn">! WARNING ! 뒤집힘 주의</div>
 
-    <div id="dmHud"><div class="dm-survive">SURVIVE <b id="dmTime">0.0</b>s</div></div>
+    <div id="dmHud"><div class="dm-survive">TIME <b id="dmTime">5:00</b></div></div>
+    <div id="dmScore"></div>
+    <div id="dmItem"><div class="box" id="dmItemIcon">⤴️</div><div class="key">F</div></div>
     <div class="warn" id="dmWarn">! 경계 임박 !</div>
     <div class="banner" id="dmBanner"><div class="big" id="dmBannerBig">GAME OVER</div><div class="sub" id="dmBannerSub"></div></div>
 
