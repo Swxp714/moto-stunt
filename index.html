@@ -150,13 +150,15 @@
     /* ---- main screen: pixel/dot UI + hero showcase ---- */
     #heroCanvas { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 0; display: none; image-rendering: pixelated; }
     #menu.mainscreen { justify-content: flex-start; background: linear-gradient(180deg, #123a5e 0%, #0c2138 48%, #07101d 100%); }
-    #menu.mainscreen::after { content: ''; position: absolute; inset: 0; z-index: 0; opacity: .07; pointer-events: none;
-      background-image: linear-gradient(45deg, #fff 25%, transparent 25%, transparent 75%, #fff 75%), linear-gradient(45deg, #fff 25%, transparent 25%, transparent 75%, #fff 75%);
-      background-size: 64px 64px; background-position: 0 0, 32px 32px; }
     #menu.mainscreen #heroCanvas { display: block; }
-    #menu.mainscreen .m-title { position: absolute; top: 30px; left: 0; right: 0; text-align: center; z-index: 2;
-      font-size: 56px; color: #fff; text-shadow: 4px 4px 0 #06283a, 0 0 0 #000; }
-    #menu.mainscreen .m-sub { position: absolute; top: 100px; left: 0; right: 0; text-align: center; z-index: 2; margin: 0; color: var(--cyan); }
+    /* title + PLAY are rendered INSIDE the pixel canvas on the main screen for a unified look */
+    #menu.mainscreen .m-title, #menu.mainscreen .m-sub, #menu.mainscreen .play-panel { display: none; }
+    #fadeOverlay { position: fixed; inset: 0; z-index: 58; background: #06080f; opacity: 0; pointer-events: none;
+      transition: opacity .35s ease; }
+    #fadeOverlay.on { opacity: 1; }
+    /* next screen slides in from the right (following the bike that drove off) */
+    .m-screen.slidein { animation: slideInRight .44s cubic-bezier(.2,.8,.3,1); }
+    @keyframes slideInRight { from { transform: translateX(80%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
     /* pixel boxes (no rounded corners; double hard border) */
     .play-panel { position: absolute; bottom: 38px; left: 50%; transform: translateX(-50%); z-index: 2;
       background: #0a1422; border: 3px solid var(--cyan); padding: 16px 20px; box-shadow: 0 0 0 3px #06060c, 6px 6px 0 #06060c; }
@@ -377,6 +379,7 @@
   </div>
 
   <div id="countdown"></div>
+  <div id="fadeOverlay"></div>
   <div id="miniViews"></div>
 
   <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>

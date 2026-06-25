@@ -8,6 +8,7 @@ import { HandTracker, computeControls } from './hands.js';
 import { makeBayerTexture } from './pixelart.js';
 import { Net } from './net.js';
 import { VEHICLES, mountRider } from '../models/vehicles.js';
+import { at } from '../models/_kit.js';
 import { openKartSelect } from './kartselect.js';
 
 // soft/angular 3D vehicle models keyed for in-game use
@@ -1134,13 +1135,28 @@ function showScreen(name) {
 function openMenu() { inMenu = true; menuEl.classList.remove('hidden'); hud.classList.remove('online', 'dm'); hud.classList.add('mhidden'); showScreen('main'); }
 function closeMenu() { inMenu = false; menuEl.classList.add('hidden'); hud.classList.remove('mhidden'); showHero(false); }
 
-// ---- main-menu hero showcase: a rotating kart + rider on a podium ----
+// ---- main-menu hero: rotating kart + title + PLAY, all rendered INSIDE the
+// pixel canvas (one shader) for a unified dot look ----
 const heroCanvas = document.getElementById('heroCanvas');
+const fadeOverlay = document.getElementById('fadeOverlay');
 const HERO_COLORS = [0xe8842a, 0xe14b4b, 0x4b86e1, 0x49b96a, 0x9b59d0, 0xf2c53d];
-let heroR, heroScene, heroCam, heroKart, heroRAF, heroOn = false;
+let heroR, heroScene, heroCam, heroKart, heroRAF, heroOn = false, heroPlay, heroHover = false, heroFly = 0;
+// build a text plane from a 2D canvas (pixelated along with everything else)
+function heroText(text, { fs = 110, color = '#ffffff', shadow = null, h = 1 } = {}) {
+  const c = document.createElement('canvas'), ctx = c.getContext('2d'), pad = 24;
+  const font = `800 ${fs}px Galmuri11, system-ui, sans-serif`;
+  ctx.font = font; const w = Math.ceil(ctx.measureText(text).width) + pad * 2;
+  c.width = w; c.height = fs + pad * 2;
+  ctx.font = font; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  if (shadow) { ctx.fillStyle = shadow; ctx.fillText(text, c.width / 2 + 6, c.height / 2 + 7); }
+  ctx.fillStyle = color; ctx.fillText(text, c.width / 2, c.height / 2);
+  const tex = new THREE.CanvasTexture(c); tex.anisotropy = 1;
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(h * c.width / c.height, h),
+    new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthTest: false, depthWrite: false }));
+  m.renderOrder = 10; return m;
+}
 function initHero() {
-  heroR = new THREE.WebGLRenderer({ canvas: heroCanvas, antialias: true, alpha: true });
-  heroR.setPixelRatio(Math.min(2, devicePixelRatio));
+  heroR = new THREE.WebGLRenderer({ canvas: heroCanvas, antialias: false, alpha: true });
   heroR.shadowMap.enabled = true; heroR.shadowMap.type = THREE.PCFSoftShadowMap;
   heroR.toneMapping = THREE.ACESFilmicToneMapping; heroR.toneMappingExposure = 1.05;
   heroScene = new THREE.Scene();
@@ -1151,6 +1167,18 @@ function initHero() {
   heroScene.add(new THREE.AmbientLight(0xffffff, 0.35));
   const base = new THREE.Mesh(new THREE.CylinderGeometry(2.4, 2.7, 0.4, 40), new THREE.MeshStandardMaterial({ color: 0x1b3a5c, roughness: 0.7 }));
   base.position.y = 0.2; base.receiveShadow = true; heroScene.add(base);
+  // in-canvas UI
+  heroScene.add(at(heroText('MOTO STUNT', { fs: 130, color: '#ffffff', shadow: '#0a3050', h: 1.05 }), 0, 4.0, 2));
+  heroScene.add(at(heroText('PIXEL WHEELIE · TRAIL DEATHMATCH', { fs: 56, color: '#5ad1ff', h: 0.32 }), 0, 3.25, 2));
+  heroPlay = at(heroText('▶ PLAY', { fs: 120, color: '#04121c', shadow: null, h: 0.5 }), 0, -0.15, 2.2);
+  heroPlay.material.depthTest = false; heroPlay.renderOrder = 11;
+  // cyan plate behind the PLAY text
+  const plate = new THREE.Mesh(new THREE.PlaneGeometry(3.2, 0.82), new THREE.MeshBasicMaterial({ color: 0x5ad1ff, depthTest: false }));
+  plate.position.set(0, -0.15, 2.1); plate.renderOrder = 10;
+  const plateBorder = new THREE.Mesh(new THREE.PlaneGeometry(3.5, 1.06), new THREE.MeshBasicMaterial({ color: 0x06283a, depthTest: false }));
+  plateBorder.position.set(0, -0.15, 2.05); plateBorder.renderOrder = 9;
+  heroScene.add(plateBorder, plate, heroPlay);
+  heroPlay.userData.plate = plate;
 }
 function rollHero() {
   if (heroKart) { heroScene.remove(heroKart); heroKart.traverse(o => o.geometry && o.geometry.dispose()); }
@@ -1158,25 +1186,48 @@ function rollHero() {
   const col = HERO_COLORS[Math.floor(Math.random() * HERO_COLORS.length)];
   heroKart = v.build(col); if (v.seat) mountRider(heroKart, v.seat, 0xf4ead6);
   heroKart.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
-  heroKart.position.y = 0.4; heroScene.add(heroKart);
+  heroKart.position.set(0, 0.4, 0); heroScene.add(heroKart);
 }
-function resizeHero() {   // render low-res then upscale (CSS pixelated) to keep the dot/pixel look
+function resizeHero() {   // render low-res then upscale (CSS pixelated) to keep the dot look
   if (!heroR) return;
-  const px = 4;
-  heroR.setSize(Math.max(2, Math.floor(innerWidth / px)), Math.max(2, Math.floor(innerHeight / px)), false);
+  heroR.setSize(Math.max(2, Math.floor(innerWidth / 4)), Math.max(2, Math.floor(innerHeight / 4)), false);
   heroCam.aspect = innerWidth / innerHeight; heroCam.updateProjectionMatrix();
+}
+const heroRay = new THREE.Raycaster(), heroM = new THREE.Vector2();
+function heroPoint(e, click) {
+  if (!heroOn || !heroPlay || heroFly) return;
+  heroM.x = (e.clientX / innerWidth) * 2 - 1; heroM.y = -(e.clientY / innerHeight) * 2 + 1;
+  heroRay.setFromCamera(heroM, heroCam);
+  const hit = heroRay.intersectObject(heroPlay.userData.plate).length > 0;
+  heroHover = hit; heroCanvas.style.cursor = hit ? 'pointer' : 'default';
+  if (hit && click) startMainTransition();
+}
+heroCanvas.addEventListener('pointermove', e => heroPoint(e, false));
+heroCanvas.addEventListener('click', e => heroPoint(e, true));
+let transitioning = false;
+function startMainTransition() {   // PLAY: kart zooms off to the right, next UI slides in from that side
+  if (transitioning) return; transitioning = true; heroFly = 1;
+  setTimeout(() => {
+    showScreen('play');
+    const ps = menuEl.querySelector('.m-screen[data-s="play"]');
+    if (ps) { ps.classList.add('slidein'); setTimeout(() => ps.classList.remove('slidein'), 460); }
+    transitioning = false; heroFly = 0;
+  }, 360);
 }
 function heroLoop() {
   if (!heroOn) return;
-  if (heroKart) heroKart.rotation.y += 0.008;
-  heroCam.position.set(0, 3.2, 9.5); heroCam.lookAt(0, 1.1, 0);
+  if (heroFly) { if (heroKart) { heroKart.rotation.y = 0; heroKart.position.x += 0.95; } }   // face +X and 쓩~ off to the right
+  else if (heroKart) heroKart.rotation.y += 0.008;
+  if (heroPlay) { const s = heroHover ? 1.08 : 1.0; heroPlay.scale.x += (s - heroPlay.scale.x) * 0.2; heroPlay.scale.y = heroPlay.scale.x;
+    if (heroPlay.userData.plate) { heroPlay.userData.plate.scale.x += ((heroHover ? 1.06 : 1) - heroPlay.userData.plate.scale.x) * 0.2; heroPlay.userData.plate.scale.y = heroPlay.userData.plate.scale.x; } }
+  heroCam.position.set(0, 3.6, 12.8); heroCam.lookAt(0, 1.3, 0);
   heroR.render(heroScene, heroCam);
   heroRAF = requestAnimationFrame(heroLoop);
 }
 function showHero(on) {
   if (on && !heroR) { initHero(); rollHero(); }
-  else if (on && !heroOn) rollHero();   // fresh kart each time the main screen opens
-  heroOn = on;
+  else if (on && !heroOn) { heroFly = 0; rollHero(); }   // fresh kart each time the main screen opens
+  heroOn = on; heroHover = false;
   if (on) { resizeHero(); cancelAnimationFrame(heroRAF); heroLoop(); }
   else if (heroRAF) cancelAnimationFrame(heroRAF);
 }
