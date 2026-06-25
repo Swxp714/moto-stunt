@@ -424,7 +424,7 @@ function createWorld(bodyColor) {
 // ---------------------------------------------------------------------------
 const DM = { moveSpeed: 34, turnRate: 2.6, arenaR: 95, startR: 42,
   trailGap: 1.6, trailW: 1.2, trailH: 2.4, graceSegs: 6, trailMax: 55, // tail length cap (shorter)
-  shrinkRate: 2.4, minR: 16, wheelieMul: 1.7,      // shrink rate; wheelie speed boost
+  shrinkRate: 2.4, minR: 16, wheelieMul: 2.4,      // shrink rate; wheelie speed boost (stronger)
   jumpPadR: 3.8, jumpTime: 0.85, jumpHeight: 7, jumpPads: 7,  // jump ramps
   // --- shared score/respawn tuning ---
   matchTime: 300, respawnDelay: 2, invulnTime: 2.2, killScore: 2, minR: 16,
@@ -492,7 +492,13 @@ function createArenaWorld(riderDefs, modeKey = 'score') {
     const flame = new THREE.Mesh(new THREE.ConeGeometry(0.72, 2.4, 8),
       new THREE.MeshBasicMaterial({ color: 0xffb648, transparent: true, opacity: 0.9, depthWrite: false, blending: THREE.AdditiveBlending }));
     flame.rotation.x = Math.PI / 2; flame.position.set(0, 0.7, 2.0); flame.visible = false; bike.add(flame);  // +Z = behind (bike faces -Z)
-    return { idx, isBot: !!def.isBot, remote: !!def.remote, startDead: !!def.dead, name: def.name, color: def.color, bike, bubble, flame,
+    // gold crown for the current leader (1등), floats above the rider's head
+    const crown = new THREE.Group();
+    const goldMat = new THREE.MeshStandardMaterial({ color: 0xffd23a, roughness: 0.35, metalness: 0.4 });
+    const band = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.5, 0.28, 8), goldMat); crown.add(band);
+    for (let kk = 0; kk < 5; kk++) { const a = kk / 5 * Math.PI * 2; const sp = new THREE.Mesh(new THREE.ConeGeometry(0.12, 0.34, 6), goldMat); sp.position.set(Math.cos(a) * 0.46, 0.28, Math.sin(a) * 0.46); crown.add(sp); }
+    crown.position.y = 3.5; crown.visible = false; bike.add(crown);
+    return { idx, isBot: !!def.isBot, remote: !!def.remote, startDead: !!def.dead, name: def.name, color: def.color, bike, bubble, flame, crown,
       trailMat: new THREE.MeshBasicMaterial({ color: def.color }), trailSegs: [], trailMeshes: [],
       x: 0, z: 0, heading: 0, pitch: 0, speed: DM.moveSpeed, alive: true, lastTX: 0, lastTZ: 0, trailInit: false,
       air: 0, y: 0, head: 0, airFlag: false,   // jump timer / height / head-look / remote airborne
@@ -587,7 +593,7 @@ function createArenaWorld(riderDefs, modeKey = 'score') {
   const spkPos = new Float32Array(SPK_MAX * 3).fill(-9999), spkVel = new Float32Array(SPK_MAX * 3), spkLife = new Float32Array(SPK_MAX);
   let spkIdx = 0;
   const spkGeo = new THREE.BufferGeometry(); spkGeo.setAttribute('position', new THREE.BufferAttribute(spkPos, 3));
-  scene.add(new THREE.Points(spkGeo, new THREE.PointsMaterial({ color: 0xffc23a, size: 2.0, sizeAttenuation: false, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false })));
+  scene.add(new THREE.Points(spkGeo, new THREE.PointsMaterial({ color: 0xffd84a, size: 5, sizeAttenuation: false, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false })));
   function spawnSpark(x, y, z) {
     const i = spkIdx; spkIdx = (spkIdx + 1) % SPK_MAX;
     spkPos[i*3] = x; spkPos[i*3+1] = y; spkPos[i*3+2] = z;
@@ -676,14 +682,18 @@ function createArenaWorld(riderDefs, modeKey = 'score') {
   }
   function positionAll(dt) {
     const tnow = performance.now();
+    const leaderIdx = topScorer();
     for (const r of riders) {
       r.bike.position.set(r.x, r.y || 0, r.z); r.bike.rotation.y = -r.heading; r.bike.rotation.x = r.pitch || 0;
-      // item VFX: shield bubble (shield/invuln) + boost flame
-      const shielded = r.alive && (r.shield > 0 || r.invuln > 0);
-      r.bubble.visible = shielded;
-      if (shielded) { r.bubble.material.opacity = 0.34 + 0.16 * Math.abs(Math.sin(tnow * 0.008)); r.bubble.material.color.setHex(r.shield > 0 ? 0xb59bff : 0x9fe0ff); }
+      // shield item -> bubble; post-respawn invuln -> blink the bike (반투명 깜빡)
+      r.bubble.visible = r.alive && r.shield > 0;
+      if (r.bubble.visible) r.bubble.material.opacity = 0.34 + 0.16 * Math.abs(Math.sin(tnow * 0.008));
+      if (r.alive) r.bike.visible = !(r.invuln > 0 && r.shield <= 0 && Math.floor(tnow / 90) % 2 === 0);
+      // boost flame
       r.flame.visible = r.alive && r.boost > 0;
       if (r.flame.visible) r.flame.scale.set(1, 0.85 + 0.5 * Math.abs(Math.sin(tnow * 0.03)), 1);
+      // crown on the current leader
+      if (r.crown) r.crown.visible = r.alive && r.idx === leaderIdx;
     }
     riders.forEach((r, i) => {
       const fx = Math.sin(r.heading), fz = -Math.cos(r.heading);
@@ -781,7 +791,10 @@ function createArenaWorld(riderDefs, modeKey = 'score') {
     S.alive = riders[0].alive;
     S.nearEdge = riders[0].alive && Math.hypot(riders[0].x, riders[0].z) > arena.radius * 0.82;
 
-    for (const r of riders) if (r.alive && r.pitch > CFG.maxPitch * 0.35) { spawnSpark(r.x + (Math.random() - 0.5) * 0.6, 0.25, r.z + (Math.random() - 0.5) * 0.6); spawnSpark(r.x + (Math.random() - 0.5) * 0.6, 0.25, r.z + (Math.random() - 0.5) * 0.6); }
+    for (const r of riders) if (r.alive && r.pitch > CFG.maxPitch * 0.22) {
+      const sfx2 = Math.sin(r.heading), sfz2 = -Math.cos(r.heading);   // spew sparks from the rear wheel
+      for (let s = 0; s < 4; s++) spawnSpark(r.x - sfx2 * 1.3 + (Math.random() - 0.5) * 0.7, 0.3, r.z - sfz2 * 1.3 + (Math.random() - 0.5) * 0.7);
+    }
     updateExplosion(dt); updateSparks(dt); updateFw(dt);
     positionAll(dt);
   }
@@ -1178,7 +1191,7 @@ function closeMenu() { inMenu = false; menuEl.classList.add('hidden'); hud.class
 const heroCanvas = document.getElementById('heroCanvas');
 const fadeOverlay = document.getElementById('fadeOverlay');
 const HERO_COLORS = [0xe8842a, 0xe14b4b, 0x4b86e1, 0x49b96a, 0x9b59d0, 0xf2c53d];
-let heroR, heroScene, heroCam, heroKart, heroRAF, heroOn = false, heroPlay, heroHover = false, heroFly = 0;
+let heroR, heroScene, heroCam, heroKart, heroRAF, heroOn = false, heroPlay, heroHover = false, heroFly = 0, heroSpk = null;
 // build a text plane from a 2D canvas (pixelated along with everything else)
 function heroText(text, { fs = 110, color = '#ffffff', shadow = null, h = 1 } = {}) {
   const c = document.createElement('canvas'), ctx = c.getContext('2d'), pad = 24;
@@ -1217,6 +1230,11 @@ function initHero() {
   plateBorder.position.set(0, -0.15, 2.05); plateBorder.renderOrder = 9;
   heroScene.add(plateBorder, plate, heroPlay);
   heroPlay.userData.plate = plate;
+  // spark burst for the wheelie flyoff
+  const HN = 80, hp = new Float32Array(HN * 3).fill(-9999), hv = new Float32Array(HN * 3), hl = new Float32Array(HN);
+  const hgeo = new THREE.BufferGeometry(); hgeo.setAttribute('position', new THREE.BufferAttribute(hp, 3));
+  heroScene.add(new THREE.Points(hgeo, new THREE.PointsMaterial({ color: 0xffc23a, size: 0.17, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false })));
+  heroSpk = { hp, hv, hl, hgeo, i: 0, N: HN };
 }
 function rollHero() {
   if (heroKart) { heroScene.remove(heroKart); heroKart.traverse(o => o.geometry && o.geometry.dispose()); }
@@ -1254,7 +1272,21 @@ function startMainTransition() {   // PLAY: kart zooms off to the right, next UI
 }
 function heroLoop() {
   if (!heroOn) return;
-  if (heroFly) { if (heroKart) { heroKart.rotation.y = 0; heroKart.position.x += 0.95; } }   // face +X and 쓩~ off to the right
+  if (heroFly) { if (heroKart) { heroKart.rotation.y = 0; heroKart.rotation.z = Math.min(0.8, heroKart.rotation.z + 0.07); heroKart.position.x += 0.95; } }   // 윌리(앞바퀴 들고) 하며 오른쪽으로 쓩~
+  if (heroSpk) {
+    if (heroFly && heroKart) for (let s = 0; s < 4; s++) {   // spew sparks from the rear wheel while flying off
+      const i = heroSpk.i; heroSpk.i = (heroSpk.i + 1) % heroSpk.N;
+      heroSpk.hp[i*3] = heroKart.position.x - 1.4; heroSpk.hp[i*3+1] = 0.5 + Math.random() * 0.4; heroSpk.hp[i*3+2] = (Math.random() - 0.5) * 0.7;
+      heroSpk.hv[i*3] = -3 - Math.random() * 4; heroSpk.hv[i*3+1] = 1.5 + Math.random() * 2.5; heroSpk.hv[i*3+2] = (Math.random() - 0.5) * 2.5;
+      heroSpk.hl[i] = 0.4 + Math.random() * 0.3;
+    }
+    for (let i = 0; i < heroSpk.N; i++) {
+      if (heroSpk.hl[i] <= 0) continue;
+      heroSpk.hl[i] -= 0.016; if (heroSpk.hl[i] <= 0) { heroSpk.hp[i*3+1] = -9999; continue; }
+      heroSpk.hv[i*3+1] -= 0.18; heroSpk.hp[i*3] += heroSpk.hv[i*3]*0.05; heroSpk.hp[i*3+1] += heroSpk.hv[i*3+1]*0.05; heroSpk.hp[i*3+2] += heroSpk.hv[i*3+2]*0.05;
+    }
+    heroSpk.hgeo.attributes.position.needsUpdate = true;
+  }
   else if (heroKart) heroKart.rotation.y += 0.008;
   if (heroPlay) { const s = heroHover ? 1.08 : 1.0; heroPlay.scale.x += (s - heroPlay.scale.x) * 0.2; heroPlay.scale.y = heroPlay.scale.x;
     if (heroPlay.userData.plate) { heroPlay.userData.plate.scale.x += ((heroHover ? 1.06 : 1) - heroPlay.userData.plate.scale.x) * 0.2; heroPlay.userData.plate.scale.y = heroPlay.userData.plate.scale.x; } }
