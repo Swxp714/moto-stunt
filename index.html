@@ -76,6 +76,7 @@
     .warn.on { display: block; }
     #p1warn { left: 50%; }
     #p2warn { left: 75%; }
+    #dmWarn { left: 50%; }
     #hud.split #p1warn { left: 25%; }
     @keyframes warnblink { 50% { opacity: .22; } }
 
@@ -128,6 +129,8 @@
     .mbtn:hover { background: #9fe6ff; }
     .mbtn.ghost { background: transparent; color: var(--cyan); box-shadow: 0 0 0 3px var(--cyan); }
     .mbtn.ghost:hover { background: rgba(90,209,255,.15); }
+    .mbtn.dmmode { display: flex; flex-direction: column; gap: 3px; padding: 10px 16px; }
+    .mbtn.dmmode span { font-size: 10px; opacity: .8; font-weight: 400; }
     .m-row { display: flex; gap: 8px; align-items: center; }
     #joinCode { font-family: var(--font); font-size: 18px; width: 140px; text-align: center; text-transform: uppercase;
       background: #0c1424; color: var(--ink); border: 3px solid var(--cyan); padding: 11px; letter-spacing: .12em; }
@@ -164,6 +167,8 @@
     #dmScore .row .rk { width: 16px; color: var(--dim); }
     #dmScore .row .nm { width: 58px; font-weight: 700; }
     #dmScore .row .sc { margin-left: auto; font-weight: 800; color: #fff; min-width: 22px; text-align: right; }
+    #dmScore .row .lv { min-width: 30px; font-size: 10px; text-align: right; color: #ff6a8a; }
+    #dmScore .row.out { opacity: .45; }
     #dmItem { position: absolute; bottom: 64px; left: 50%; transform: translateX(-50%);
       display: none; flex-direction: column; align-items: center; gap: 4px; font-family: var(--font); }
     #hud.dm #dmItem.has { display: flex; }
@@ -214,7 +219,7 @@
     <div class="warn" id="p1warn">! WARNING ! 뒤집힘 주의</div>
     <div class="warn" id="p2warn">! WARNING ! 뒤집힘 주의</div>
 
-    <div id="dmHud"><div class="dm-survive">TIME <b id="dmTime">5:00</b></div></div>
+    <div id="dmHud"><div class="dm-survive"><span id="dmTimeLabel">TIME</span> <b id="dmTime">5:00</b></div></div>
     <div id="dmScore"></div>
     <div id="dmItem"><div class="box" id="dmItemIcon">⤴️</div><div class="key">F</div></div>
     <div class="warn" id="dmWarn">! 경계 임박 !</div>
@@ -247,6 +252,14 @@
       <button class="mbtn" id="btnDeathmatch">데스매치 vs AI</button>
       <button class="mbtn" id="btnDeathmatch2">데스매치 2인 (분할)</button>
       <button class="mbtn" id="btnDeathmatchOnline">데스매치 온라인</button>
+    </div>
+
+    <div class="m-screen" data-s="dmmode" hidden>
+      <div class="m-sub" style="margin-bottom:10px;">데스매치 모드 선택</div>
+      <button class="mbtn dmmode" id="dmModeScore">점수전 <span>5분간 점수 경쟁 · 무한 리스폰 · 넓은 맵</span></button>
+      <button class="mbtn dmmode" id="dmModeSurvival">서바이벌 <span>한 번 죽으면 끝 · 맵 축소 · 최후의 1인</span></button>
+      <button class="mbtn dmmode" id="dmModeLives">목숨 3개 <span>목숨 3개 · 맵 축소 · 다 잃으면 탈락</span></button>
+      <button class="mbtn ghost" id="dmModeBack">← 뒤로</button>
     </div>
 
     <div class="m-screen" data-s="online" hidden>

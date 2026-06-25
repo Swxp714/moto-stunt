@@ -420,10 +420,20 @@ const DM = { moveSpeed: 34, turnRate: 2.6, arenaR: 95, startR: 42,
   trailGap: 1.6, trailW: 1.2, trailH: 2.4, graceSegs: 6, trailMax: 55, // tail length cap (shorter)
   shrinkRate: 2.4, minR: 16, wheelieMul: 1.7,      // shrink rate; wheelie speed boost
   jumpPadR: 3.8, jumpTime: 0.85, jumpHeight: 7, jumpPads: 7,  // jump ramps
-  // --- score mode: 5-min frag match (no elimination) ---
-  scoreR: 60, matchTime: 300, respawnDelay: 2, invulnTime: 2.2, killScore: 2,
+  // --- shared score/respawn tuning ---
+  matchTime: 300, respawnDelay: 2, invulnTime: 2.2, killScore: 2, minR: 16,
   itemInterval: 20 };   // rank-based item handed out every N seconds
-function createArenaWorld(riderDefs) {
+// three deathmatch sub-modes
+const DM_MODES = {
+  score:    { name: '점수전 (5분)',   startR: 82, shrink: false, timer: 300, maxLives: 0, // 0 = infinite respawn
+    desc: '5분간 점수 경쟁 · 죽으면 −1 · 킬 +2 · 무한 리스폰 · 넓은 맵' },
+  survival: { name: '서바이벌 (즉사)', startR: 72, shrink: true,  timer: 0,   maxLives: 1,
+    desc: '한 번 죽으면 끝 · 맵이 점점 좁아짐 · 최후의 1인 승리' },
+  lives:    { name: '목숨 3개',        startR: 72, shrink: true,  timer: 0,   maxLives: 3,
+    desc: '목숨 3개 · 맵이 좁아짐 · 다 잃으면 탈락 · 최후의 1인' },
+};
+function createArenaWorld(riderDefs, modeKey = 'score') {
+  const mode = DM_MODES[modeKey] || DM_MODES.score;
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0x06080f);
   scene.fog = new THREE.Fog(0x06080f, 70, 240);
@@ -433,19 +443,29 @@ function createArenaWorld(riderDefs) {
   const ring = new THREE.Mesh(new THREE.TorusGeometry(DM.arenaR, 0.7, 8, 72), new THREE.MeshBasicMaterial({ color: 0x5ad1ff }));
   ring.rotation.x = Math.PI / 2; ring.position.y = 0.4; scene.add(ring);
 
-  // jump pads (점프대): drive over to launch into the air
+  // jump pads (점프대): random positions, re-rolled each game via placePads()
   const PADS = [];
-  for (let i = 0; i < DM.jumpPads; i++) {
-    const a = i * Math.PI * 2 / DM.jumpPads + 0.4, pr = DM.arenaR * 0.52;
-    const px = Math.cos(a) * pr, pz = Math.sin(a) * pr;
-    PADS.push({ x: px, z: pz });
-    const pad = new THREE.Mesh(new THREE.CylinderGeometry(DM.jumpPadR, DM.jumpPadR, 0.4, 18), new THREE.MeshBasicMaterial({ color: 0xffd54a }));
-    pad.position.set(px, 0.2, pz); scene.add(pad);
-    const rim = new THREE.Mesh(new THREE.TorusGeometry(DM.jumpPadR, 0.22, 6, 22), new THREE.MeshBasicMaterial({ color: 0xffffff }));
-    rim.rotation.x = Math.PI / 2; rim.position.set(px, 0.45, pz); scene.add(rim);
+  const padMeshes = [];
+  function placePads() {
+    for (const m of padMeshes) { scene.remove(m); m.geometry.dispose(); }
+    padMeshes.length = 0; PADS.length = 0;
+    const R = (mode.startR || DM.arenaR);
+    for (let i = 0; i < DM.jumpPads; i++) {
+      let px = 0, pz = 0;
+      for (let t = 0; t < 20; t++) {   // spread out, keep off the very edge
+        const a = Math.random() * Math.PI * 2, pr = (0.18 + Math.random() * 0.72) * R;
+        px = Math.cos(a) * pr; pz = Math.sin(a) * pr;
+        if (PADS.every(p => Math.hypot(p.x - px, p.z - pz) > DM.jumpPadR * 3)) break;
+      }
+      PADS.push({ x: px, z: pz });
+      const pad = new THREE.Mesh(new THREE.CylinderGeometry(DM.jumpPadR, DM.jumpPadR, 0.4, 18), new THREE.MeshBasicMaterial({ color: 0xffd54a }));
+      pad.position.set(px, 0.2, pz); scene.add(pad); padMeshes.push(pad);
+      const rim = new THREE.Mesh(new THREE.TorusGeometry(DM.jumpPadR, 0.22, 6, 22), new THREE.MeshBasicMaterial({ color: 0xffffff }));
+      rim.rotation.x = Math.PI / 2; rim.position.set(px, 0.45, pz); scene.add(rim); padMeshes.push(rim);
+    }
   }
 
-  const arena = { radius: DM.arenaR };
+  const arena = { radius: mode.startR };
   const S = { time: 0, alive: true, nearEdge: false, over: false, winner: -1, result: '', cause: '' };
 
   function distToSeg(px, pz, s) {
@@ -463,7 +483,7 @@ function createArenaWorld(riderDefs) {
       trailMat: new THREE.MeshBasicMaterial({ color: def.color }), trailSegs: [], trailMeshes: [],
       x: 0, z: 0, heading: 0, pitch: 0, speed: DM.moveSpeed, alive: true, lastTX: 0, lastTZ: 0, trailInit: false,
       air: 0, y: 0, head: 0, airFlag: false,   // jump timer / height / head-look / remote airborne
-      score: 0, respawnT: 0, invuln: 0, lastKiller: -1,  // score / respawn / invincibility / who killed me
+      score: 0, lives: 0, respawnT: 0, invuln: 0, lastKiller: -1,  // score / lives / respawn / invincibility / killer
       item: null, boost: 0, shield: 0,         // held item key / boost timer / shield (trail-immune) timer
       tx: 0, tz: 0, th: 0 };   // remote target (network)
   }
@@ -577,15 +597,18 @@ function createArenaWorld(riderDefs) {
   function clearFx() { winAng = 0; for(let i=0;i<FW_MAX;i++){fwLife[i]=0;fwPos[i*3+1]=-9999;} for(let i=0;i<SPK_MAX;i++){spkLife[i]=0;spkPos[i*3+1]=-9999;} fwGeo.attributes.position.needsUpdate=true; spkGeo.attributes.position.needsUpdate=true; }
 
   function reset() {
-    arena.radius = DM.scoreR; ring.scale.setScalar(DM.scoreR / DM.arenaR);   // fixed arena (no shrink) for score mode
-    Object.assign(S, { time: 0, timeLeft: DM.matchTime, itemT: DM.itemInterval, alive: true, nearEdge: false, over: false, winner: -1, result: '', cause: '' });
+    arena.radius = mode.startR; ring.scale.setScalar(mode.startR / DM.arenaR);
+    placePads();   // random jump-pad layout each game
+    Object.assign(S, { time: 0, timeLeft: mode.timer || 0, itemT: DM.itemInterval, mode: modeKey,
+      alive: true, nearEdge: false, over: false, winner: -1, result: '', cause: '' });
     const n = riders.length;
     riders.forEach((r, i) => {
-      const a = n > 1 ? (i * Math.PI * 2 / n) : 0, sr = n > 1 ? DM.startR : 0;
+      const a = n > 1 ? (i * Math.PI * 2 / n) : 0, sr = n > 1 ? Math.min(DM.startR, mode.startR * 0.6) : 0;
       r.x = Math.sin(a) * sr; r.z = Math.cos(a) * sr; r.heading = (n > 1 ? Math.PI / 2 - a : 0); // tangent (circle), single=forward
       r.alive = !r.startDead; r.speed = DM.moveSpeed; r.trailInit = false; r.bike.visible = !r.startDead;
       r.pitch = 0; r.air = 0; r.y = 0; r.head = 0; r.bike.rotation.x = 0;
       r.score = 0; r.respawnT = 0; r.invuln = 0; r.item = null; r.boost = 0; r.shield = 0;
+      r.lives = mode.maxLives === 0 ? Infinity : mode.maxLives;
       clearRiderTrail(r);
     });
     clearExplosion(); clearFx();
@@ -620,13 +643,14 @@ function createArenaWorld(riderDefs) {
     else if (r.item === 'super') { r.shield = 4.0; r.boost = 4.0; }
     r.item = null;
   }
-  // death = score -1, killer +2, schedule respawn (no elimination)
+  // death = score -1, killer +2; respawn if the rider still has lives (mode-dependent)
   function applyDeath(r, killerIdx, cause) {
     if (!r.alive) return;
     r.score -= 1;
     if (killerIdx >= 0 && killerIdx !== r.idx && riders[killerIdx]) riders[killerIdx].score += DM.killScore;
-    r.alive = false; r.respawnT = DM.respawnDelay; r.bike.visible = false; r.boost = 0; r.shield = 0;
-    r.lastKiller = killerIdx;
+    r.alive = false; r.bike.visible = false; r.boost = 0; r.shield = 0; r.lastKiller = killerIdx;
+    r.lives = Math.max(0, r.lives - 1);              // Infinity-1 = Infinity (score mode)
+    r.respawnT = r.lives > 0 ? DM.respawnDelay : 0;  // 0 lives -> eliminated (no respawn)
     spawnExplosion(r.x, 1.4, r.z); clearRiderTrail(r);
     if (r.idx === 0) S.cause = cause;
   }
@@ -658,9 +682,9 @@ function createArenaWorld(riderDefs) {
       updateExplosion(dt); updateSparks(dt); updateFw(dt); positionAll(dt); return;
     }
     S.time += dt;
-    S.timeLeft = Math.max(0, (S.timeLeft != null ? S.timeLeft : DM.matchTime) - dt);
+    if (mode.timer > 0) S.timeLeft = Math.max(0, S.timeLeft - dt);          // score mode counts down
+    if (mode.shrink) { arena.radius = Math.max(DM.minR, arena.radius - DM.shrinkRate * dt); ring.scale.setScalar(arena.radius / DM.arenaR); }
     if (S.itemT != null) { S.itemT -= dt; if (S.itemT <= 0) { S.itemT = DM.itemInterval; grantItems(); } }
-    // score mode: arena is fixed (no shrink)
     for (const r of riders) {
       if (!r.alive) {   // downed -> count down to respawn (no elimination)
         if (!r.remote && r.respawnT > 0) { r.respawnT -= dt; if (r.respawnT <= 0) respawnRider(r); }
@@ -720,7 +744,16 @@ function createArenaWorld(riderDefs) {
       if (dead) applyDeath(r, killer, cause);
     }
 
-    if (!S.over && S.timeLeft <= 0) { S.over = true; S.winner = topScorer(); }   // 5-min match end -> top score wins
+    if (!S.over) {
+      if (mode.timer > 0) {                                  // score: 5-min timer -> top score wins
+        if (S.timeLeft <= 0) { S.over = true; S.winner = topScorer(); }
+      } else {                                               // survival / lives: last one still in wins
+        const inR = riders.filter(r => !r.startDead && (r.alive || r.lives > 0));
+        const field = riders.filter(r => !r.startDead).length;
+        if (field > 1 && inR.length <= 1) { S.over = true; S.winner = inR.length === 1 ? inR[0].idx : -1; }
+        else if (field === 1 && inR.length === 0) { S.over = true; S.winner = -1; }
+      }
+    }
     S.alive = riders[0].alive;
     S.nearEdge = riders[0].alive && Math.hypot(riders[0].x, riders[0].z) > arena.radius * 0.82;
 
@@ -936,6 +969,7 @@ const els = {
   dmBannerBig: document.getElementById('dmBannerBig'), dmBannerSub: document.getElementById('dmBannerSub'),
   dmWarn: document.getElementById('dmWarn'),
   dmScore: document.getElementById('dmScore'), dmItem: document.getElementById('dmItem'), dmItemIcon: document.getElementById('dmItemIcon'),
+  dmTimeLabel: document.getElementById('dmTimeLabel'),
   modeTagVal: document.getElementById('modeTagVal'),
   finishBanner: document.getElementById('finishBanner'), finishBig: document.getElementById('finishBig'), finishSub: document.getElementById('finishSub'),
 };
@@ -947,15 +981,22 @@ const ITEM_ICON = { jump: '⤴️', boost: '💨', shield: '🛡️', super: '�
 function fmtTime(s) { s = Math.max(0, Math.ceil(s)); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); }
 function updateDmHud(aw, mySlot) {
   const S = aw.S;
-  els.dmTime.textContent = fmtTime(S.timeLeft != null ? S.timeLeft : DM.matchTime);
+  const m = DM_MODES[S.mode] || DM_MODES.score;
+  // timer (score) vs survivor count (survival/lives)
+  if (m.timer > 0) { els.dmTimeLabel.textContent = 'TIME'; els.dmTime.textContent = fmtTime(S.timeLeft != null ? S.timeLeft : m.timer); }
+  else { els.dmTimeLabel.textContent = '생존'; els.dmTime.textContent = aw.riders.filter(r => !r.startDead && (r.alive || r.lives > 0)).length; }
   // leaderboard (real players only, sorted by score)
   const live = aw.riders.filter(r => !r.startDead);
   const ranked = [...live].sort((a, b) => b.score - a.score);
   els.dmScore.innerHTML = ranked.map((r, i) => {
     const col = '#' + (r.color >>> 0).toString(16).padStart(6, '0');
-    return `<div class="row${r.idx === mySlot ? ' me' : ''}"><span class="rk">${i + 1}</span>` +
+    const out = !r.alive && r.lives <= 0;
+    let life = '';
+    if (m.maxLives > 1) life = out ? '💀' : '♥'.repeat(Math.max(0, Math.min(3, r.lives)));
+    else if (m.maxLives === 1) life = out ? '💀' : '';
+    return `<div class="row${r.idx === mySlot ? ' me' : ''}${out ? ' out' : ''}"><span class="rk">${i + 1}</span>` +
       `<span class="nm" style="color:${col}">${r.idx === mySlot ? '나' : 'P' + (r.idx + 1)}</span>` +
-      `<span class="sc">${r.score}</span></div>`;
+      `<span class="sc">${r.score}</span><span class="lv">${life}</span></div>`;
   }).join('');
   // held item slot
   const me = aw.riders[mySlot];
@@ -1112,23 +1153,30 @@ async function startLocal2() {
   setGameMode('2P'); worlds.forEach(w => w.reset());
 }
 const DM_COLORS = [0xff5a3c, 0x3a8bff, 0x49d17a, 0xffd54a, 0xff5ad1, 0x5ad1ff, 0xff9a3a, 0xb06aff];
+let dmModeKey = 'score';   // chosen deathmatch sub-mode (score | survival | lives)
+// mode-select gate: pick a sub-mode, then run the chosen DM kind
+function pickDmMode(kind) {
+  online.gameType = 'dm'; showScreen('dmmode');
+  dmModeGo = kind;
+}
+let dmModeGo = 'ai';
 async function startDeathmatch() {
   teardownOnline(); closeMenu();
-  const [pick] = await openKartSelect({ count: 1, title: '카트 선택 — 데스매치 vs AI' });
+  const [pick] = await openKartSelect({ count: 1, title: `데스매치 — ${DM_MODES[dmModeKey].name}` });
   const defs = [{ color: pick.color, vehicle: pick.vehicle, isBot: false, name: '나' }];
   for (let i = 1; i < 8; i++) defs.push({ color: DM_COLORS[i], vehicle: randVehicle(), isBot: true, name: '봇' + i });
-  arenaWorld = createArenaWorld(defs);
+  arenaWorld = createArenaWorld(defs, dmModeKey);
   gameMode = 'DM';
   hud.classList.remove('split', 'online'); hud.classList.add('dm'); camWrap.classList.remove('split');
   updateModeTag(); sizeTargets();
 }
 async function startDeathmatchLocal2() {
   teardownOnline(); closeMenu();
-  const picks = await openKartSelect({ count: 2, title: '카트 선택 — 데스매치 2인' });
+  const picks = await openKartSelect({ count: 2, title: `데스매치 2인 — ${DM_MODES[dmModeKey].name}` });
   arenaWorld = createArenaWorld([
     { color: picks[0].color, vehicle: picks[0].vehicle, isBot: false, name: 'P1' },
     { color: picks[1].color, vehicle: picks[1].vehicle, isBot: false, name: 'P2' },
-  ]);
+  ], dmModeKey);
   gameMode = 'DM2';
   hud.classList.remove('split', 'online'); hud.classList.add('dm'); camWrap.classList.remove('split');
   updateModeTag(); sizeTargets();
@@ -1212,8 +1260,8 @@ function dmMaybeStart() {
   if (online.players.length >= 2 && online.players.every(p => p.ready)) {
     const slots = online.players.map(p => p.slot).sort((a, b) => a - b);
     const karts = {}; online.players.forEach(p => { if (p.kart) karts[p.slot] = p.kart; });
-    net.send({ t: 'start', slots, karts });
-    dmBeginCountdown({ slots, karts });
+    net.send({ t: 'start', slots, karts, mode: dmModeKey });
+    dmBeginCountdown({ slots, karts, mode: dmModeKey });
   }
 }
 function dmBeginCountdown(cfg) {
@@ -1229,7 +1277,7 @@ function dmBeginCountdown(cfg) {
     defs.push({ color: k && k.color != null ? k.color : DM_COLORS[s % 8], vehicle: k && k.vehicle,
       isBot: false, remote: s !== online.mySlot, dead: !present, name: 'P' + (s + 1) });
   }
-  arenaWorld = createArenaWorld(defs);
+  arenaWorld = createArenaWorld(defs, cfg.mode || dmModeKey);
   gameMode = 'DMO';
   hud.classList.remove('split', 'online'); hud.classList.add('dm'); camWrap.classList.remove('split');
   updateModeTag(); sizeTargets(); arenaWorld.setPaused(true);
@@ -1315,7 +1363,7 @@ function beginCountdown(gt) {
     arenaWorld = createArenaWorld([
       { color: 0xff5a3c, isBot: false, name: '나' },
       { color: 0x3a8bff, isBot: false, remote: true, name: '상대' },
-    ]);
+    ], dmModeKey);
     gameMode = 'DMO';
     hud.classList.remove('split', 'online'); hud.classList.add('dm'); camWrap.classList.remove('split');
     updateModeTag(); sizeTargets(); arenaWorld.setPaused(true);
@@ -1348,10 +1396,19 @@ function endOnline(msg) {
 // button wiring
 $('btnSingle').onclick = startSingle;
 $('btnLocal2').onclick = startLocal2;
-$('btnDeathmatch').onclick = startDeathmatch;
-$('btnDeathmatch2').onclick = startDeathmatchLocal2;
+$('btnDeathmatch').onclick = () => pickDmMode('ai');
+$('btnDeathmatch2').onclick = () => pickDmMode('2p');
 $('btnOnline').onclick = () => { online.gameType = 'race'; showScreen('online'); setMsg('onlineMsg', '레이스 · 코드로 연결'); };
-$('btnDeathmatchOnline').onclick = () => { online.gameType = 'dm'; showScreen('online'); setMsg('onlineMsg', '데스매치 · 코드로 연결'); };
+$('btnDeathmatchOnline').onclick = () => pickDmMode('online');
+const proceedDm = () => {
+  if (dmModeGo === 'ai') startDeathmatch();
+  else if (dmModeGo === '2p') startDeathmatchLocal2();
+  else { showScreen('online'); setMsg('onlineMsg', `데스매치(${DM_MODES[dmModeKey].name}) · 코드로 연결`); }
+};
+$('dmModeScore').onclick = () => { dmModeKey = 'score'; proceedDm(); };
+$('dmModeSurvival').onclick = () => { dmModeKey = 'survival'; proceedDm(); };
+$('dmModeLives').onclick = () => { dmModeKey = 'lives'; proceedDm(); };
+$('dmModeBack').onclick = () => showScreen('main');
 $('btnBackMain').onclick = () => { teardownOnline(); showScreen('main'); };
 $('btnCreate').onclick = hostRoom;
 $('btnJoin').onclick = joinRoom;
@@ -1401,6 +1458,7 @@ function renderMiniViews() {
     box.l.textContent = 'P' + (r.idx + 1);
     box.d.classList.toggle('dead', !r.alive);
     box.o.style.display = r.alive ? 'none' : 'flex';
+    if (!r.alive) box.o.textContent = (r.lives > 0) ? '리스폰…' : 'OUT';
     if (r.alive) {
       const yGl = H - yTop - bh, cam = arenaWorld.cameras[r.idx];
       cam.aspect = bw / bh; cam.updateProjectionMatrix();
@@ -1461,11 +1519,13 @@ function loop() {
     els.dmWarn.classList.toggle('on', !two && !!dst.nearEdge);
     els.dmBanner.classList.toggle('show', dst.over);
     if (dst.over) {
+      const isScore = (DM_MODES[dst.mode] || DM_MODES.score).timer > 0;
       const wScore = dst.winner >= 0 && arenaWorld.riders[dst.winner] ? arenaWorld.riders[dst.winner].score : 0;
       els.dmBannerBig.textContent = dst.winner < 0 ? '무승부' : `${dst.winner === mySlot ? '나' : 'PLAYER ' + (dst.winner + 1)} 우승!`;
       els.dmBanner.classList.toggle('win', dst.winner >= 0);
       const mine = dst.winner === mySlot;
-      els.dmBannerSub.textContent = `${mine ? '🎉 ' : ''}최고점 ${wScore}점${odm ? '' : ' · R 재시작'}`;
+      const detail = isScore ? `최고점 ${wScore}점` : '최후의 생존 🏁';
+      els.dmBannerSub.textContent = `${mine ? '🎉 ' : ''}${detail}${odm ? '' : ' · R 재시작'}`;
     }
     // high-speed screen warp when wheelie-boosted (my rider)
     const r0 = arenaWorld.riders[mySlot];
