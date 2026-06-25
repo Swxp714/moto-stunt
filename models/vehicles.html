@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>MOTO STUNT — soft 3D vehicles</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #f3eee2; overflow: hidden; font-family: system-ui, sans-serif; }
+  #c { display: block; width: 100vw; height: 100vh; }
+  .labels { position: fixed; left: 0; right: 0; bottom: 20px; display: flex; justify-content: center; gap: 0; pointer-events: none; }
+  .labels span { width: 200px; text-align: center; color: #5a4f3f; font-size: 15px; font-weight: 700; letter-spacing: .02em; }
+</style>
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+} }
+</script>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div class="labels" id="labels"></div>
+<script type="module">
+import * as THREE from 'three';
+import { VEHICLES } from './vehicles.js';
+
+const canvas = document.getElementById('c');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+renderer.setPixelRatio(Math.min(2, devicePixelRatio));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.05;
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0xf3eee2);
+
+const camera = new THREE.PerspectiveCamera(34, 1, 0.1, 100);
+
+// ---- soft icon lighting ---------------------------------------------------
+scene.add(new THREE.HemisphereLight(0xffffff, 0xcdc4b0, 0.85));
+const key = new THREE.DirectionalLight(0xffffff, 2.1);
+key.position.set(5, 9, 6); key.castShadow = true;
+key.shadow.mapSize.set(2048, 2048);
+key.shadow.camera.near = 1; key.shadow.camera.far = 40;
+key.shadow.camera.left = -16; key.shadow.camera.right = 16;
+key.shadow.camera.top = 10; key.shadow.camera.bottom = -6;
+key.shadow.bias = -0.0004; key.shadow.radius = 6;
+scene.add(key);
+const fill = new THREE.DirectionalLight(0xffe9d0, 0.5); fill.position.set(-6, 4, -4); scene.add(fill);
+scene.add(new THREE.AmbientLight(0xffffff, 0.25));
+
+// soft contact-shadow ground
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(80, 80), new THREE.ShadowMaterial({ opacity: 0.18 }));
+ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true; scene.add(ground);
+
+// ---- place vehicles in a row ----------------------------------------------
+const spacing = 4.2;
+const groups = [];
+VEHICLES.forEach((v, i) => {
+  const g = v.build();
+  g.userData.key = v.key;
+  g.position.x = (i - (VEHICLES.length - 1) / 2) * spacing;
+  g.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+  scene.add(g); groups.push(g);
+});
+// labels
+const lab = document.getElementById('labels');
+VEHICLES.forEach(v => { const s = document.createElement('span'); s.textContent = v.name; lab.appendChild(s); });
+
+// ---- camera framing + render ----------------------------------------------
+let focusKey = new URLSearchParams(location.search).get('v');
+let spin = new URLSearchParams(location.search).has('spin');
+function resize() {
+  const w = innerWidth, h = innerHeight;
+  renderer.setSize(w, h, false);
+  camera.aspect = w / h; camera.updateProjectionMatrix();
+}
+addEventListener('resize', resize); resize();
+
+function frame() {
+  if (focusKey) {
+    const g = groups.find(x => x.userData.key === focusKey) || groups[0];
+    camera.position.set(g.position.x + 4.2, 3.0, 5.2);
+    camera.lookAt(g.position.x, 0.9, 0);
+  } else {
+    camera.position.set(0.5, 4.4, 15.5);
+    camera.lookAt(0, 0.85, 0);
+  }
+}
+let t = 0;
+function loop() {
+  t += 0.01;
+  if (spin) groups.forEach(g => { g.rotation.y += 0.01; });
+  frame();
+  renderer.render(scene, camera);
+  requestAnimationFrame(loop);
+}
+loop();
+
+// hooks for screenshot automation
+window.__gallery = {
+  focus(k) { focusKey = k; },
+  all() { focusKey = null; },
+  rotate(deg) { groups.forEach(g => g.rotation.y = deg * Math.PI / 180); },
+  count: groups.length,
+};
+</script>
+</body>
+</html>
