@@ -718,7 +718,7 @@ function createArenaWorld(riderDefs, modeKey = 'score') {
   function applyDeath(r, killerIdx, cause) {
     if (!r.alive) return;
     r.score -= 1;
-    if (killerIdx >= 0 && killerIdx !== r.idx && riders[killerIdx]) { riders[killerIdx].score += DM.killScore; if (killerIdx === 0) { sfx.play('kill'); scorePop('+' + DM.killScore, 'plus'); } }
+    if (killerIdx >= 0 && killerIdx !== r.idx && riders[killerIdx]) { riders[killerIdx].score += DM.killScore; if (killerIdx === 0) { sfx.play('kill'); setTimeout(() => sfx.play('score_up'), 90); scorePop('+' + DM.killScore, 'plus'); } }
     r.alive = false; r.bike.visible = false; r.boost = 0; r.shield = 0; r.lastKiller = killerIdx;
     r.lives = Math.max(0, r.lives - 1);              // Infinity-1 = Infinity (score mode)
     r.respawnT = r.lives > 0 ? DM.respawnDelay : 0;  // 0 lives -> eliminated (no respawn)
