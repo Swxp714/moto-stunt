@@ -22,7 +22,8 @@
 <div class="labels" id="labels"></div>
 <script type="module">
 import * as THREE from 'three';
-import { VEHICLES } from './vehicles.js';
+import { VEHICLES, mountRider } from './vehicles.js';
+const showRiders = new URLSearchParams(location.search).has('riders');
 
 const canvas = document.getElementById('c');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
@@ -60,6 +61,7 @@ const groups = [];
 VEHICLES.forEach((v, i) => {
   const g = v.build();
   g.userData.key = v.key;
+  if (showRiders && v.seat) mountRider(g, v.seat, [0xf4ead6, 0xf2c0a0, 0xbcd6f0, 0xc8e8b0][i % 4]);
   g.position.x = (i - (VEHICLES.length - 1) / 2) * spacing;
   g.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
   scene.add(g); groups.push(g);

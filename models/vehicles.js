@@ -216,11 +216,51 @@ function buildWheelbarrow() {
   return g;
 }
 
-export { buildScooter, buildDirtBike, buildSportBike, buildWheelbarrow };
+// ---- Rider: a doodle "marshmallow" character in a seated riding pose --------
+// Origin (0,0,0) is the seat contact (butt). Faces +X. Place it on a kart's
+// seat anchor with mountRider(). bodyColor lets each player be tinted.
+function buildRider(bodyColor = 0xf4ead6) {
+  const g = new THREE.Group();
+  const DARK = 0x2f2a28;
+
+  // torso + head fused into one rounded marshmallow block
+  g.add(at(rbox(0.6, 0.88, 0.5, bodyColor, 0.27), 0.02, 0.48, 0));
+
+  // two simple vertical "line" eyes on the front (+X) face
+  const eye = (z) => at(new THREE.Mesh(new THREE.CapsuleGeometry(0.045, 0.11, 3, 8), mat(DARK)), 0.31, 0.62, z);
+  g.add(eye(0.12)); g.add(eye(-0.12));
+
+  // thin dark arms reaching forward-down toward the handlebars + ball hands
+  g.add(at(tube(0.62, 0.057, DARK), 0.34, 0.52, 0.27, 0, 0, -56));
+  g.add(at(tube(0.62, 0.057, DARK), 0.34, 0.52, -0.27, 0, 0, -56));
+  g.add(at(ball(0.075, DARK), 0.62, 0.36, 0.3));
+  g.add(at(ball(0.075, DARK), 0.62, 0.36, -0.3));
+
+  // legs: thigh forward, shin down, little feet (rests on the pegs)
+  g.add(at(tube(0.5, 0.06, DARK), 0.28, 0.06, 0.17, 0, 0, -74)); // thigh forward
+  g.add(at(tube(0.5, 0.06, DARK), 0.28, 0.06, -0.17, 0, 0, -74));
+  g.add(at(tube(0.44, 0.06, DARK), 0.52, -0.2, 0.17));           // shin down
+  g.add(at(tube(0.44, 0.06, DARK), 0.52, -0.2, -0.17));
+  g.add(at(rbox(0.2, 0.1, 0.14, DARK, 0.05), 0.58, -0.42, 0.17));
+  g.add(at(rbox(0.2, 0.1, 0.14, DARK, 0.05), 0.58, -0.42, -0.17));
+
+  return g;
+}
+
+// mount a rider onto a vehicle group at its seat anchor; returns the rider
+function mountRider(vehicleGroup, seat, bodyColor) {
+  const r = buildRider(bodyColor);
+  at(r, seat.x, seat.y, seat.z, 0, 0, seat.lean || 0);
+  if (seat.scale) r.scale.setScalar(seat.scale);
+  vehicleGroup.add(r);
+  return r;
+}
+
+export { buildScooter, buildDirtBike, buildSportBike, buildWheelbarrow, buildRider, mountRider };
 
 export const VEHICLES = [
-  { key: 'scooter',     name: '배달 스쿠터',  build: buildScooter },
-  { key: 'dirtbike',    name: '더트바이크',    build: buildDirtBike },
-  { key: 'sportbike',   name: '스포츠바이크',  build: buildSportBike },
-  { key: 'wheelbarrow', name: '손수레',        build: buildWheelbarrow },
+  { key: 'scooter',     name: '배달 스쿠터',  build: buildScooter,     seat: { x: -0.35, y: 1.42, z: 0, lean: -4 } },
+  { key: 'dirtbike',    name: '더트바이크',    build: buildDirtBike,    seat: { x: -0.45, y: 1.86, z: 0, lean: -8 } },
+  { key: 'sportbike',   name: '스포츠바이크',  build: buildSportBike,   seat: { x: -0.55, y: 1.34, z: 0, lean: 12 } },
+  { key: 'wheelbarrow', name: '손수레',        build: buildWheelbarrow, seat: { x: 0.3,  y: 1.5,  z: 0, lean: -2, scale: 0.92 } },
 ];
