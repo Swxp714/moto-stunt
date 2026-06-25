@@ -167,9 +167,14 @@ function buildWheelbarrow(body = 0xe0552e) {
   // taper: a smaller box tucked under for a narrower-bottom feel
   const tubBottom = rbox(1.3, 0.3, 1.0, C, 0.2);
   tub.add(at(tubBottom, 0, -0.42, 0));
-  // recessed darker inset on top face -> hollow look
-  const tubInset = rbox(1.5, 0.18, 1.2, 0xc0461f, 0.16);
-  tub.add(at(tubInset, 0, 0.34, 0));
+  // soil fill + a little sprout growing out of the tub
+  tub.add(at(rbox(1.5, 0.26, 1.16, 0x6b4a2e, 0.07), 0, 0.3, 0));        // dirt
+  tub.add(at(ball(0.27, 0x5e4129, { detail: 0 }), -0.34, 0.42, 0.18));  // dirt mounds
+  tub.add(at(ball(0.23, 0x5e4129, { detail: 0 }), 0.32, 0.42, -0.2));
+  tub.add(at(ball(0.2, 0x5e4129, { detail: 0 }), 0.05, 0.44, 0.0));
+  tub.add(at(tube(0.46, 0.038, 0x4fae4f), 0.06, 0.66, 0));              // sprout stem
+  tub.add(at(ball(0.15, 0x66d166, { detail: 0 }), -0.04, 0.9, 0.05));   // leaves
+  tub.add(at(ball(0.13, 0x66d166, { detail: 0 }), 0.22, 0.85, -0.04));
   g.add(at(tub, 0.35, 1.05, 0, 0, 0, -7)); // tilt nose-down toward wheel
 
   // ----- Frame: light gray-beige tubes -----

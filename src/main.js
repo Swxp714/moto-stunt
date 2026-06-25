@@ -10,6 +10,11 @@ import { Net } from './net.js';
 import { VEHICLES, mountRider } from '../models/vehicles.js';
 import { at } from '../models/_kit.js';
 import { openKartSelect } from './kartselect.js';
+import sfx from './sfx.js';
+// click sound on any pixel button / segment / chip (one delegated listener)
+addEventListener('click', (e) => {
+  if (e.target.closest('.mbtn, .seg, .ks-chip, .ks-sw div, .side-box, .pcard, .chip, .sw')) sfx.play('ui_click');
+}, true);
 
 // soft/angular 3D vehicle models keyed for in-game use
 const VMAP = Object.fromEntries(VEHICLES.map(v => [v.key, v]));
@@ -295,7 +300,7 @@ function createWorld(bodyColor) {
   }
   function triggerCrash() {
     if (game.state !== STATE.RIDING || game.invincible > 0) return;
-    game.state = STATE.CRASHED; game.crashTimer = CFG.respawnFreeze; game.speed = 0;
+    game.state = STATE.CRASHED; game.crashTimer = CFG.respawnFreeze; game.speed = 0; sfx.play('crash');
     fx.flash = 0.7; fx.flashColor.setRGB(1.0, 0.25, 0.2); fx.shake = 0.6; // red impact + shake
     // pick the rewind target: where the player was rewindSeconds ago
     const target = performance.now() - CFG.rewindSeconds * 1000;
@@ -344,7 +349,7 @@ function createWorld(bodyColor) {
         }
       }
       if (game.distance >= CFG.trackLength) {
-        game.state = STATE.FINISHED;
+        game.state = STATE.FINISHED; sfx.play('finish');
         game.finishTime = (performance.now() - game.startTime) / 1000;
       }
       // high-wheelie sparks from the rear wheel contact
@@ -648,12 +653,12 @@ function createArenaWorld(riderDefs, modeKey = 'score') {
   function applyDeath(r, killerIdx, cause) {
     if (!r.alive) return;
     r.score -= 1;
-    if (killerIdx >= 0 && killerIdx !== r.idx && riders[killerIdx]) riders[killerIdx].score += DM.killScore;
+    if (killerIdx >= 0 && killerIdx !== r.idx && riders[killerIdx]) { riders[killerIdx].score += DM.killScore; if (killerIdx === 0) sfx.play('kill'); }
     r.alive = false; r.bike.visible = false; r.boost = 0; r.shield = 0; r.lastKiller = killerIdx;
     r.lives = Math.max(0, r.lives - 1);              // Infinity-1 = Infinity (score mode)
     r.respawnT = r.lives > 0 ? DM.respawnDelay : 0;  // 0 lives -> eliminated (no respawn)
     spawnExplosion(r.x, 1.4, r.z); clearRiderTrail(r);
-    if (r.idx === 0) S.cause = cause;
+    if (r.idx === 0) { S.cause = cause; sfx.play('dm_death'); }
   }
   function topScorer() {
     let best = -1e9, bi = -1;
@@ -894,8 +899,8 @@ addEventListener('keydown', (e) => {
   if (e.code === 'KeyM') setSource(inputSource === 'motion' ? 'keyboard' : 'motion');
   // item use (F = P1/single/online me, RightShift = P2 in local 2P). e.repeat guards auto-fire.
   if (!e.repeat && !inMenu && arenaWorld && (gameMode === 'DM' || gameMode === 'DM2' || gameMode === 'DMO')) {
-    if (e.code === 'KeyF') arenaWorld.useItem(gameMode === 'DMO' ? online.mySlot : 0);
-    else if (e.code === 'ShiftRight' && gameMode === 'DM2') arenaWorld.useItem(1);
+    if (e.code === 'KeyF') { const i = gameMode === 'DMO' ? online.mySlot : 0; const it = arenaWorld.riders[i] && arenaWorld.riders[i].item; arenaWorld.useItem(i); if (it) sfx.play('item_' + it); }
+    else if (e.code === 'ShiftRight' && gameMode === 'DM2') { const it = arenaWorld.riders[1] && arenaWorld.riders[1].item; arenaWorld.useItem(1); if (it) sfx.play('item_' + it); }
   }
 });
 addEventListener('keyup', (e) => keys.delete(e.code));
@@ -1404,8 +1409,8 @@ function dmBeginCountdown(cfg) {
   let n = 3; cdEl.classList.add('show'); cdEl.textContent = n;
   cdTimer = setInterval(() => {
     n--;
-    if (n > 0) cdEl.textContent = n;
-    else if (n === 0) { cdEl.textContent = 'GO!'; arenaWorld.setPaused(false); }
+    if (n > 0) { cdEl.textContent = n; sfx.play('count_beep'); }
+    else if (n === 0) { cdEl.textContent = 'GO!'; sfx.play('count_go'); arenaWorld.setPaused(false); }
     else { clearInterval(cdTimer); cdTimer = null; cdEl.classList.remove('show'); }
   }, 800);
 }
@@ -1493,8 +1498,8 @@ function beginCountdown(gt) {
   let n = 3; cdEl.classList.add('show'); cdEl.textContent = n;
   cdTimer = setInterval(() => {
     n--;
-    if (n > 0) cdEl.textContent = n;
-    else if (n === 0) { cdEl.textContent = 'GO!'; if (dm) arenaWorld.setPaused(false); else { worlds[0].game.frozen = false; worlds[0].game.startTime = performance.now(); } }
+    if (n > 0) { cdEl.textContent = n; sfx.play('count_beep'); }
+    else if (n === 0) { cdEl.textContent = 'GO!'; sfx.play('count_go'); if (dm) arenaWorld.setPaused(false); else { worlds[0].game.frozen = false; worlds[0].game.startTime = performance.now(); } }
     else { clearInterval(cdTimer); cdTimer = null; cdEl.classList.remove('show'); }
   }, 800);
 }
