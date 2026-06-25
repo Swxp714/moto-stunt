@@ -1126,9 +1126,56 @@ let net = null;
 const online = { active: false, meReady: false, oppReady: false, oppHere: false, raceOver: false, started: false, sendT: 0, gameType: 'race', resultShown: false,
   players: [], mySlot: 0, myReady: false, lobby: [] };   // N-player DM (star)
 
-function showScreen(name) { menuEl.querySelectorAll('.m-screen').forEach(s => { s.hidden = (s.dataset.s !== name); }); }
+function showScreen(name) {
+  menuEl.querySelectorAll('.m-screen').forEach(s => { s.hidden = (s.dataset.s !== name); });
+  menuEl.classList.toggle('mainscreen', name === 'main');
+  showHero(name === 'main');
+}
 function openMenu() { inMenu = true; menuEl.classList.remove('hidden'); hud.classList.remove('online', 'dm'); showScreen('main'); }
-function closeMenu() { inMenu = false; menuEl.classList.add('hidden'); }
+function closeMenu() { inMenu = false; menuEl.classList.add('hidden'); showHero(false); }
+
+// ---- main-menu hero showcase: a rotating kart + rider on a podium ----
+const heroCanvas = document.getElementById('heroCanvas');
+const HERO_COLORS = [0xe8842a, 0xe14b4b, 0x4b86e1, 0x49b96a, 0x9b59d0, 0xf2c53d];
+let heroR, heroScene, heroCam, heroKart, heroRAF, heroOn = false;
+function initHero() {
+  heroR = new THREE.WebGLRenderer({ canvas: heroCanvas, antialias: true, alpha: true });
+  heroR.setPixelRatio(Math.min(2, devicePixelRatio));
+  heroR.shadowMap.enabled = true; heroR.shadowMap.type = THREE.PCFSoftShadowMap;
+  heroR.toneMapping = THREE.ACESFilmicToneMapping; heroR.toneMappingExposure = 1.05;
+  heroScene = new THREE.Scene();
+  heroCam = new THREE.PerspectiveCamera(32, 1, 0.1, 100);
+  heroScene.add(new THREE.HemisphereLight(0xbfe0ff, 0x202838, 1.0));
+  const k = new THREE.DirectionalLight(0xffffff, 2.0); k.position.set(4, 9, 6); k.castShadow = true;
+  k.shadow.mapSize.set(1024, 1024); k.shadow.bias = -0.0004; heroScene.add(k);
+  heroScene.add(new THREE.AmbientLight(0xffffff, 0.35));
+  const base = new THREE.Mesh(new THREE.CylinderGeometry(2.4, 2.7, 0.4, 40), new THREE.MeshStandardMaterial({ color: 0x1b3a5c, roughness: 0.7 }));
+  base.position.y = 0.2; base.receiveShadow = true; heroScene.add(base);
+}
+function rollHero() {
+  if (heroKart) { heroScene.remove(heroKart); heroKart.traverse(o => o.geometry && o.geometry.dispose()); }
+  const v = VEHICLES[Math.floor(Math.random() * VEHICLES.length)];
+  const col = HERO_COLORS[Math.floor(Math.random() * HERO_COLORS.length)];
+  heroKart = v.build(col); if (v.seat) mountRider(heroKart, v.seat, 0xf4ead6);
+  heroKart.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+  heroKart.position.y = 0.4; heroScene.add(heroKart);
+}
+function resizeHero() { if (!heroR) return; heroR.setSize(innerWidth, innerHeight, false); heroCam.aspect = innerWidth / innerHeight; heroCam.updateProjectionMatrix(); }
+function heroLoop() {
+  if (!heroOn) return;
+  if (heroKart) heroKart.rotation.y += 0.008;
+  heroCam.position.set(0, 3.2, 9.5); heroCam.lookAt(0, 1.1, 0);
+  heroR.render(heroScene, heroCam);
+  heroRAF = requestAnimationFrame(heroLoop);
+}
+function showHero(on) {
+  if (on && !heroR) { initHero(); rollHero(); }
+  else if (on && !heroOn) rollHero();   // fresh kart each time the main screen opens
+  heroOn = on;
+  if (on) { resizeHero(); cancelAnimationFrame(heroRAF); heroLoop(); }
+  else if (heroRAF) cancelAnimationFrame(heroRAF);
+}
+addEventListener('resize', resizeHero);
 function setMsg(id, t) { $(id).textContent = t || ''; }
 
 function teardownOnline() {
@@ -1410,6 +1457,15 @@ $('dmModeSurvival').onclick = () => { dmModeKey = 'survival'; proceedDm(); };
 $('dmModeLives').onclick = () => { dmModeKey = 'lives'; proceedDm(); };
 $('dmModeBack').onclick = () => showScreen('main');
 $('btnBackMain').onclick = () => { teardownOnline(); showScreen('main'); };
+// main-screen side boxes: mute toggle + controls help
+window.__muted = false;
+$('sideLeft').onclick = () => {
+  window.__muted = !window.__muted;
+  $('sideLeft').textContent = window.__muted ? '🔇' : '🔊';
+  $('sideLeft').classList.toggle('muted', window.__muted);
+};
+$('sideRight').onclick = () => $('helpOverlay').classList.remove('hidden');
+$('helpClose').onclick = () => $('helpOverlay').classList.add('hidden');
 $('btnCreate').onclick = hostRoom;
 $('btnJoin').onclick = joinRoom;
 $('btnReady').onclick = toggleReady;

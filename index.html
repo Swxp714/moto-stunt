@@ -146,6 +146,41 @@
     .m-result { font-size: 40px; margin-bottom: 6px; }
     .m-result.win { color: var(--yellow); } .m-result.lose { color: var(--red); }
 
+    /* ---- redesigned main screen (hero showcase) ---- */
+    #heroCanvas { position: absolute; inset: 0; z-index: 0; display: none; }
+    #menu.mainscreen { justify-content: flex-start; background: linear-gradient(180deg, #12365c 0%, #0c2138 48%, #07101d 100%); }
+    #menu.mainscreen::after { content: ''; position: absolute; inset: 0; z-index: 0; opacity: .08; pointer-events: none;
+      background-image: linear-gradient(45deg, #fff 25%, transparent 25%, transparent 75%, #fff 75%), linear-gradient(45deg, #fff 25%, transparent 25%, transparent 75%, #fff 75%);
+      background-size: 64px 64px; background-position: 0 0, 32px 32px; }
+    #menu.mainscreen #heroCanvas { display: block; }
+    #menu.mainscreen .m-title { position: absolute; top: 34px; left: 0; right: 0; text-align: center; z-index: 2;
+      font-size: 58px; color: #fff; text-shadow: 0 4px 0 #06283a, 0 0 30px rgba(90,209,255,.5); }
+    #menu.mainscreen .m-sub { position: absolute; top: 104px; left: 0; right: 0; text-align: center; z-index: 2;
+      margin: 0; color: var(--cyan); }
+    .main-only { display: none; }
+    #menu.mainscreen .main-only { display: flex; }
+    .play-panel { position: absolute; bottom: 34px; left: 50%; transform: translateX(-50%); z-index: 2;
+      background: rgba(8,16,28,.72); border: 3px solid var(--cyan); border-radius: 16px; padding: 14px 18px;
+      box-shadow: 0 10px 0 rgba(0,0,0,.25), inset 0 0 24px rgba(90,209,255,.12); }
+    .play-label { color: var(--yellow); font-size: 13px; margin-bottom: 11px; text-align: center; letter-spacing: .14em; }
+    .play-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+    .play-grid .mbtn { min-width: 168px; padding: 12px 10px; font-size: 13px; }
+    .side-box { position: absolute; bottom: 56px; width: 72px; height: 72px; z-index: 2; cursor: pointer;
+      display: flex; align-items: center; justify-content: center; font-size: 30px;
+      background: rgba(8,16,28,.72); border: 3px solid var(--cyan); border-radius: 16px;
+      box-shadow: 0 8px 0 rgba(0,0,0,.25); transition: transform .08s; }
+    #menu:not(.mainscreen) .side-box { display: none; }
+    .side-box:hover { transform: translateY(-3px); background: rgba(90,209,255,.2); }
+    .side-box#sideLeft { left: 44px; } .side-box.right { right: 44px; }
+    .side-box.muted { border-color: var(--dim); opacity: .6; }
+    #helpOverlay { position: absolute; inset: 0; z-index: 5; display: flex; align-items: center; justify-content: center; background: rgba(4,6,12,.7); }
+    #helpOverlay.hidden { display: none; }
+    .help-card { background: #0c1424; border: 3px solid var(--cyan); border-radius: 16px; padding: 22px 26px; max-width: 420px; }
+    .help-h { font-size: 20px; color: var(--cyan); margin-bottom: 14px; text-align: center; letter-spacing: .08em; }
+    .help-card p { font-size: 12px; color: var(--ink); margin: 8px 0; line-height: 1.5; }
+    .help-card p b { color: var(--yellow); }
+    .help-card .mbtn { margin: 14px auto 0; display: block; min-width: 120px; }
+
     #countdown { position: fixed; inset: 0; z-index: 55; display: none; align-items: center; justify-content: center;
       font-family: var(--font); font-size: 110px; color: #fff; text-shadow: 5px 5px 0 var(--cyan); pointer-events: none; }
     #countdown.show { display: flex; }
@@ -242,16 +277,35 @@
 
   <!-- menu / lobby -->
   <div id="menu" class="hidden">
+    <canvas id="heroCanvas"></canvas>
     <div class="m-title">MOTO STUNT</div>
-    <div class="m-sub">PIXEL WHEELIE RACER</div>
+    <div class="m-sub">PIXEL WHEELIE · TRAIL DEATHMATCH</div>
 
     <div class="m-screen" data-s="main">
-      <button class="mbtn" id="btnSingle">싱글 플레이</button>
-      <button class="mbtn" id="btnLocal2">로컬 2인 (분할)</button>
-      <button class="mbtn" id="btnOnline">온라인 2인 (레이스)</button>
-      <button class="mbtn" id="btnDeathmatch">데스매치 vs AI</button>
-      <button class="mbtn" id="btnDeathmatch2">데스매치 2인 (분할)</button>
-      <button class="mbtn" id="btnDeathmatchOnline">데스매치 온라인</button>
+      <div class="play-panel">
+        <div class="play-label">▶ PLAY</div>
+        <div class="play-grid">
+          <button class="mbtn" id="btnSingle">싱글 레이스</button>
+          <button class="mbtn" id="btnLocal2">로컬 2인 레이스</button>
+          <button class="mbtn" id="btnOnline">온라인 레이스</button>
+          <button class="mbtn" id="btnDeathmatch">데스매치 vs AI</button>
+          <button class="mbtn" id="btnDeathmatch2">데스매치 2인</button>
+          <button class="mbtn" id="btnDeathmatchOnline">데스매치 온라인</button>
+        </div>
+      </div>
+      <div class="side-box" id="sideLeft" title="음소거">🔊</div>
+      <div class="side-box right" id="sideRight" title="조작법">❔</div>
+    </div>
+
+    <div id="helpOverlay" class="hidden">
+      <div class="help-card">
+        <div class="help-h">조작법</div>
+        <p><b>레이스</b> · ← → 조향 · ↑ 윌리(가속) · 1등 도착</p>
+        <p><b>데스매치</b> · 방향키 조향 · ↑ 윌리 · <b>F</b> 아이템</p>
+        <p><b>로컬 2인</b> · P1 A·D / W　·　P2 ← → / ↑</p>
+        <p><b>모션</b> · 양손으로 핸들 · 고개로 시점 · M 전환</p>
+        <button class="mbtn" id="helpClose">닫기</button>
+      </div>
     </div>
 
     <div class="m-screen" data-s="dmmode" hidden>
