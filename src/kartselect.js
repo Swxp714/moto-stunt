@@ -119,7 +119,7 @@ export function openKartSelect(opts = {}) {
   }
   function move(p, d) { if (p.locked) return; p.idx = (p.idx + d + N) % N; rebuild(p); refresh(p); }
   function cyc(p, d) { if (p.locked) return; p.colorIdx = (p.colorIdx + d + NC) % NC; rebuild(p); refresh(p); }
-  function lock(p) { p.locked = !p.locked; refresh(p); if (players.every(q => q.locked)) startCountdown(); }
+  function lock(p) { p.locked = !p.locked; refresh(p); if (players.every(q => q.locked)) { if (opts.noCountdown) finish(); else startCountdown(); } }
 
   let counting = false, done = false;
   const countEl = root.querySelector('#ksCount');

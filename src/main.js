@@ -146,15 +146,25 @@ function createWorld(bodyColor) {
   }
 
   // opponent ghost (online): half-saturation + translucent
-  const oppBike = buildBike(0x49d17a);
-  oppBike.traverse((o) => {
-    if (!o.isMesh) return;
-    o.material = o.material.clone();
-    const c = o.material.color, g = (c.r + c.g + c.b) / 3;
-    c.setRGB(c.r * 0.5 + g * 0.5, c.g * 0.5 + g * 0.5, c.b * 0.5 + g * 0.5); // halve saturation
-    o.material.transparent = true; o.material.opacity = 0.5; o.material.depthWrite = false;
-  });
+  function ghostify(bk) {
+    bk.traverse((o) => {
+      if (!o.isMesh) return;
+      o.material = o.material.clone();
+      const c = o.material.color, g = (c.r + c.g + c.b) / 3;
+      c.setRGB(c.r * 0.5 + g * 0.5, c.g * 0.5 + g * 0.5, c.b * 0.5 + g * 0.5); // halve saturation
+      o.material.transparent = true; o.material.opacity = 0.5; o.material.depthWrite = false;
+    });
+  }
+  let oppBike = buildBike(0x49d17a); ghostify(oppBike);
   oppBike.visible = false; scene.add(oppBike);
+  let oppChoice = { vehicle: DEFAULT_VEHICLE, color: 0x49d17a };
+  function setOppVehicle(choice) {
+    if (choice) oppChoice = { vehicle: choice.vehicle || oppChoice.vehicle, color: choice.color != null ? choice.color : oppChoice.color };
+    const vis = oppBike.visible;
+    scene.remove(oppBike); oppBike.traverse(o => { if (o.geometry) o.geometry.dispose(); });
+    oppBike = buildBike(oppChoice.color, { vehicle: oppChoice.vehicle }); ghostify(oppBike);
+    oppBike.visible = vis; scene.add(oppBike);
+  }
   const opp = { active: false, dist: 0, lane: 0, pitch: 0, td: 0, tl: 0, tp: 0, alive: true };
   function setOpponentState(s) { opp.active = true; opp.td = s.s || 0; opp.tl = s.x || 0; opp.tp = s.p || 0; opp.alive = (s.st !== 1); }
   function clearOpponent() { opp.active = false; oppBike.visible = false; opp.dist = opp.td = opp.lane = opp.tl = opp.pitch = opp.tp = 0; }
@@ -393,7 +403,7 @@ function createWorld(bodyColor) {
     fx.flash = Math.max(0, fx.flash - dt * 3);
   }
 
-  return { scene, camera, game, fx, reset, update, celebrate, setOpponentState, clearOpponent, setVehicle, opp, get bike() { return bike; }, obstacles };
+  return { scene, camera, game, fx, reset, update, celebrate, setOpponentState, clearOpponent, setVehicle, setOppVehicle, opp, get bike() { return bike; }, obstacles };
 }
 
 // ---------------------------------------------------------------------------
@@ -1038,7 +1048,7 @@ function onNetData(d, fromId) {
   if (!d || !d.t) return;
   if (online.gameType === 'dm') return dmOnData(d, fromId);
   // --- racing 1v1 ---
-  if (d.t === 'ready') { online.oppReady = d.v; lobbyUpdate(); maybeStart(); }
+  if (d.t === 'ready') { online.oppReady = d.v; if (d.kart) { online.oppKart = d.kart; worlds[0].setOppVehicle(d.kart); } lobbyUpdate(); maybeStart(); }
   else if (d.t === 'start') beginCountdown(d.gt);
   else if (d.t === 'state') worlds[0].setOpponentState(d);
   else if (d.t === 'finish') { if (online.active && !online.raceOver) { online.raceOver = true; finishOnline(false); } }
@@ -1048,7 +1058,7 @@ function onNetData(d, fromId) {
 // ---- N-player deathmatch (star: host relays) ----
 function dmOnData(d, fromId) {
   if (net.isHost) {                                  // host receives from a guest
-    if (d.t === 'ready') { const p = online.players.find(p => p.connId === fromId); if (p) p.ready = d.v; dmBroadcastLobby(); dmMaybeStart(); }
+    if (d.t === 'ready') { const p = online.players.find(p => p.connId === fromId); if (p) { p.ready = d.v; p.kart = d.kart; } dmBroadcastLobby(); dmMaybeStart(); }
     else if (d.t === 'st') { if (arenaWorld && gameMode === 'DMO') arenaWorld.applyRemote(d.slot, d); net.relay(d, fromId); }
     else if (d.t === 'dead') { if (arenaWorld) arenaWorld.applyRemote(d.slot, { a: false }); net.relay(d, fromId); }
   } else {                                           // guest receives from host
@@ -1094,19 +1104,23 @@ function dmMaybeStart() {
   if (!net || !net.isHost || online.started) return;
   if (online.players.length >= 2 && online.players.every(p => p.ready)) {
     const slots = online.players.map(p => p.slot).sort((a, b) => a - b);
-    net.send({ t: 'start', slots });
-    dmBeginCountdown({ slots });
+    const karts = {}; online.players.forEach(p => { if (p.kart) karts[p.slot] = p.kart; });
+    net.send({ t: 'start', slots, karts });
+    dmBeginCountdown({ slots, karts });
   }
 }
 function dmBeginCountdown(cfg) {
   if (online.started) return;
   online.started = true; online.gameType = 'dm'; online.active = true; online.raceOver = false; online.resultShown = false; closeMenu();
   const slots = cfg.slots || [0, online.mySlot];
+  const karts = cfg.karts || {};
   const maxSlot = Math.max(...slots, online.mySlot);
   const defs = [];
   for (let s = 0; s <= maxSlot; s++) {
     const present = slots.includes(s);
-    defs.push({ color: DM_COLORS[s % 8], isBot: false, remote: s !== online.mySlot, dead: !present, name: 'P' + (s + 1) });
+    const k = karts[s];
+    defs.push({ color: k && k.color != null ? k.color : DM_COLORS[s % 8], vehicle: k && k.vehicle,
+      isBot: false, remote: s !== online.mySlot, dead: !present, name: 'P' + (s + 1) });
   }
   arenaWorld = createArenaWorld(defs);
   gameMode = 'DMO';
@@ -1160,18 +1174,26 @@ function lobbyUpdate() {
   $('oppCard').classList.toggle('ready', online.oppReady);
   $('oppRdy').textContent = !online.oppHere ? '없음' : (online.oppReady ? '준비 완료' : '대기 중');
 }
-function toggleReady() {
+async function toggleReady() {
   if (online.gameType === 'dm') {
+    if (!online.myReady) {  // about to ready up -> pick a kart first
+      const [pick] = await openKartSelect({ count: 1, noCountdown: true, title: '카트 선택 — 온라인 데스매치' });
+      online.myKart = pick;
+    }
     online.myReady = !online.myReady;
     $('btnReady').textContent = online.myReady ? '준비 취소' : '준비';
-    if (net.isHost) { const me = online.players.find(p => p.slot === 0); if (me) me.ready = online.myReady; dmBroadcastLobby(); dmMaybeStart(); }
-    else net.send({ t: 'ready', v: online.myReady });
+    if (net.isHost) { const me = online.players.find(p => p.slot === 0); if (me) { me.ready = online.myReady; me.kart = online.myKart; } dmBroadcastLobby(); dmMaybeStart(); }
+    else net.send({ t: 'ready', v: online.myReady, kart: online.myKart });
     return;
   }
   if (!online.oppHere) { setMsg('lobbyMsg', '상대가 아직 없습니다'); return; }
+  if (!online.meReady) {  // about to ready up -> pick a kart first
+    const [pick] = await openKartSelect({ count: 1, noCountdown: true, title: '카트 선택 — 온라인 레이스' });
+    online.myKart = pick; worlds[0].setVehicle(pick);
+  }
   online.meReady = !online.meReady;
   $('btnReady').textContent = online.meReady ? '준비 취소' : '준비';
-  net.send({ t: 'ready', v: online.meReady }); lobbyUpdate(); maybeStart();
+  net.send({ t: 'ready', v: online.meReady, kart: online.myKart }); lobbyUpdate(); maybeStart();
 }
 function maybeStart() {
   if (net && net.isHost && online.meReady && online.oppReady && !online.started) { net.send({ t: 'start', gt: online.gameType }); beginCountdown(online.gameType); }
