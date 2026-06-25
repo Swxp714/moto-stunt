@@ -11,7 +11,7 @@
  * Synthesizes real audio through the Web Audio API. Unmodified core.
  * ------------------------------------------------------------------ */
 let // ZzFXMicro - Zuper Zmall Zound Zynth - v1.3.2 by Frank Force
-zzfxV = .3,                 // master volume
+zzfxV = .35,                // master volume
 zzfxX = new AudioContext(), // shared audio context
 zzfx =                      // play sound (returns nothing)
 (p=1,k=.05,b=220,e=0,r=0,t=.1,q=0,D=1,u=0,y=0,v=0,z=0,l=0,E=0,A=0,F=0,c=0,w=1,m=0,B=0
@@ -37,39 +37,51 @@ createBufferSource();b.buffer=p;b.connect(X.destination);b.start()};
  * ------------------------------------------------------------------ */
 const SOUNDS = {
   // --- UI ---
-  ui_click:     [.4, 0, 1200, 0, .01, .05, 1, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, .6],   // short bright blip
-  ui_move:      [.25, 0, 480, 0, 0, .04, 0, 1.5, 0, 0, 0, 0, 0, 0, 0, 0, 0, .4],   // soft tick
-  ui_lock:      [.45, 0, 660, .01, .06, .14, 1, 1, 0, 0, 280, .04, 0, 0, 0, 0, 0, .6], // confirm ding
+  // Crisp, clean triangle blips — short attack/release so they read as taps, not
+  // tones. Triangle (shape 1) is softer than square, avoiding harsh edges.
+  ui_click:     [.5, .02, 1400, 0, .008, .04, 1, 3, 0, 0, 0, 0, 0, 0, 0, .12, 0, .5],   // tight bright tap
+  ui_move:      [.3, .03, 560, 0, .005, .035, 1, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, .4],     // soft cursor tick
+  ui_lock:      [.55, 0, 700, .005, .04, .12, 1, 1, 0, 0, 380, .03, 0, 0, 0, 0, 0, .7, .1], // two-tone confirm ding
 
   // --- Countdown ---
-  count_beep:   [.5, 0, 520, 0, .08, .1, 1, 1.5, 0, 0, 0, 0, 0, 0, 0, 0, 0, .7],   // short countdown beep
-  count_go:     [.55, 0, 880, .01, .12, .18, 1, 1, 0, 0, 200, .05, 0, 0, 0, 0, 0, .8], // bright GO tone
+  // Clean sine beeps with a touch of decay so they don't drone. count_go jumps
+  // up an octave-ish for a bright, celebratory release.
+  count_beep:   [.55, 0, 480, 0, .07, .09, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, .8, .05],   // mellow countdown beep
+  count_go:     [.6, 0, 720, .005, .1, .2, 0, 1, 0, 0, 480, .06, 0, 0, 0, 0, 0, .9, .08, .04], // bright rising GO
 
   // --- Riding / stunts ---
-  wheelie_boost:[.4, .05, 180, .05, .15, .25, 0, 1, 8, 0, 0, 0, 0, .1, 0, 0, 0, .6], // rising whoosh
-  crash:        [.6, .2, 90, 0, .04, .3, 4, 1, -2, 0, 0, 0, 0, 1, 0, 0, 0, .3],      // harsh noise burst
-  respawn:      [.4, 0, 440, .02, .1, .3, 0, 1, 12, 0, 220, .08, .04, 0, 0, 0, 0, .7], // rising sparkle
-  finish:       [.5, 0, 523, .02, .1, .4, 1, 1, 0, 0, 392, .08, .12, 0, 0, 0, 0, .8], // triumphant jingle
+  // wheelie_boost: rising sawtooth whoosh with vibrato for an engine-lift feel
+  // (racing engine = low saw with pitch slide, per arcade-racer convention).
+  wheelie_boost:[.45, .08, 150, .06, .14, .26, 2, 1, 9, 0, 0, 0, 0, .06, 0, 0, 0, .7, 0, .2], // engine-lift whoosh
+  // crash: punchy noise burst with fast decay (ZzFX explosion recipe — noise +
+  // negative slide + short release). Bit-crush adds grit without being painful.
+  crash:        [.85, .3, 460, 0, .03, .22, 4, 1.4, -4, -.2, 0, 0, 0, 1.2, 0, .15, 0, .2, .1], // gritty impact burst
+  // respawn: ascending sparkle (pickup/powerup family — rising slide + pitch jump).
+  respawn:      [.45, 0, 420, .03, .1, .28, 1, 1, 10, 0, 280, .07, .05, 0, 0, 0, 0, .8, .1], // rising sparkle
+  finish:       [.55, 0, 523, .02, .12, .5, 1, .6, 0, 0, 262, .09, .14, 0, 0, 0, 0, .9, 0, .1], // triumphant arpeggio jingle
 
   // --- Deathmatch / combat ---
-  dm_death:     [.7, .25, 80, 0, .06, .4, 4, 1.5, -3, 0, 0, 0, 0, 1, 0, 0, 0, .2],  // explosion-ish burst
-  kill:         [.5, 0, 740, 0, .02, .08, 2, 1, -4, 0, 0, 0, 0, .05, 0, 0, 0, .5],  // sharp confirm hit
-  warn:         [.45, 0, 620, 0, .1, .12, 1, 1, 0, 0, -160, .06, .08, 0, 0, 0, 0, .8], // alarm blip
+  // dm_death: big explosion — strong noise, downward slide, longer tail.
+  dm_death:     [.95, .35, 280, 0, .05, .5, 4, 1.6, -3, -.1, 0, 0, 0, 1.4, 0, .2, 0, .15, .2], // explosion boom
+  kill:         [.55, 0, 900, 0, .015, .07, 2, 1, -6, 0, 0, 0, 0, .04, 0, .1, 0, .4],   // sharp hit confirm
+  warn:         [.5, 0, 540, 0, .09, .11, 1, 1, 0, 0, -180, .05, .07, 0, 0, 0, 0, .85], // two-tone alarm
 
   // --- Item pickups & powerups ---
-  item_grant:   [.45, 0, 600, .01, .08, .2, 1, 1, 0, 0, 300, .06, .06, 0, 0, 0, 0, .7], // pickup jingle
-  item_jump:    [.4, 0, 260, .02, .08, .14, 0, 1, 18, 0, 0, 0, 0, 0, 0, 0, 0, .6],  // boing
-  item_boost:   [.45, .05, 220, .04, .14, .22, 0, 1, 10, 0, 0, 0, 0, .08, 0, 0, 0, .6], // whoosh
-  item_shield:  [.35, 0, 700, .05, .2, .35, 0, 1, 2, 0, 100, .15, .05, 0, 6, 0, 0, .8], // shimmer
-  item_super:   [.5, 0, 300, .05, .2, .4, 1, 1, 14, 0, 260, .1, .05, 0, 0, 0, 0, .8],  // power-up sweep
+  item_grant:   [.5, 0, 540, .01, .07, .2, 1, 1, 0, 0, 380, .05, .06, 0, 0, 0, 0, .8],  // bright pickup jingle
+  item_jump:    [.45, .02, 300, .01, .06, .16, 1, 1, 14, 0, 220, .04, 0, 0, 0, 0, 0, .6], // springy boing
+  item_boost:   [.5, .06, 200, .04, .12, .24, 2, 1, 12, 0, 0, 0, 0, .05, 0, 0, 0, .7, 0, .15], // rising boost whoosh
+  item_shield:  [.4, 0, 640, .05, .18, .34, 0, 1, 3, 0, 160, .12, .04, 0, 5, 0, 0, .85, .1], // shimmering hum
+  item_super:   [.55, 0, 320, .04, .18, .42, 1, 1, 16, 0, 320, .08, .05, 0, 0, 0, 0, .9, .1], // ascending power-up sweep
 
   // --- Score ---
-  score_up:     [.4, 0, 880, 0, .03, .1, 1, 1, 0, 0, 540, .05, 0, 0, 0, 0, 0, .6],  // coin
-  score_down:   [.35, 0, 300, 0, .04, .12, 0, 1, -3, 0, 0, 0, 0, 0, 0, 0, 0, .5],   // low blip
+  // score_up: classic two-step coin (ZzFX coin = pitch jump up after a short
+  // first note). score_down: quick descending blip.
+  score_up:     [.5, 0, 988, 0, .04, .14, 1, 1, 0, 0, 640, .06, 0, 0, 0, 0, 0, .7, .05], // satisfying coin
+  score_down:   [.4, 0, 380, 0, .04, .12, 1, 1, -5, 0, 0, 0, 0, 0, 0, 0, 0, .5],         // descending blip
 
   // --- Jump physics ---
-  jump_launch:  [.4, 0, 240, .01, .06, .16, 0, 1, 16, 0, 0, 0, 0, 0, 0, 0, 0, .6],  // spring
-  jump_land:    [.45, .1, 110, 0, .03, .12, 4, 1, 0, 0, 0, 0, 0, .4, 0, 0, 0, .3],  // thud
+  jump_launch:  [.45, 0, 260, .01, .05, .15, 1, 1, 14, 0, 180, .03, 0, 0, 0, 0, 0, .6],  // springy launch
+  jump_land:    [.5, .12, 140, 0, .02, .1, 4, 1, -1, 0, 0, 0, 0, .5, 0, .1, 0, .25],     // soft thud
 };
 
 /* ------------------------------------------------------------------ *
