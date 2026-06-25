@@ -774,8 +774,11 @@ window.__moto = { CFG, STATE, worlds, get mode() { return gameMode; },
   composite: compositeMat, get arena() { return arenaWorld; }, DM, createArenaWorld };
 
 const keys = new Set();
+const GAME_KEYS = new Set(['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Space',
+  'KeyA', 'KeyD', 'KeyW', 'KeyS']);
 addEventListener('keydown', (e) => {
   keys.add(e.code);
+  if (!inMenu && GAME_KEYS.has(e.code)) e.preventDefault();   // stop browser scroll/back stealing controls
   if (e.code === 'KeyR' && !inMenu && gameMode !== 'ONLINE' && gameMode !== 'DMO') {
     if (gameMode === 'DM' || gameMode === 'DM2') { if (arenaWorld) arenaWorld.reset(); }
     else { worlds.forEach(w => w.reset()); winner = null; hideFinish(); }
