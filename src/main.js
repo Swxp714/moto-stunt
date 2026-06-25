@@ -485,7 +485,14 @@ function createArenaWorld(riderDefs, modeKey = 'score') {
   function makeRider(def, idx) {
     const bike = buildBike(def.color, { vehicle: def.vehicle }); scene.add(bike);
     bike.rotation.order = 'YXZ';   // yaw (heading) then pitch (wheelie)
-    return { idx, isBot: !!def.isBot, remote: !!def.remote, startDead: !!def.dead, name: def.name, color: def.color, bike,
+    // item VFX (children of the bike): shield bubble + boost flame, toggled in positionAll
+    const bubble = new THREE.Mesh(new THREE.SphereGeometry(1.9, 14, 10),
+      new THREE.MeshBasicMaterial({ color: 0x9fe0ff, transparent: true, opacity: 0.34, depthWrite: false }));
+    bubble.position.y = 1.1; bubble.visible = false; bike.add(bubble);
+    const flame = new THREE.Mesh(new THREE.ConeGeometry(0.72, 2.4, 8),
+      new THREE.MeshBasicMaterial({ color: 0xffb648, transparent: true, opacity: 0.9, depthWrite: false, blending: THREE.AdditiveBlending }));
+    flame.rotation.x = Math.PI / 2; flame.position.set(0, 0.7, 2.0); flame.visible = false; bike.add(flame);  // +Z = behind (bike faces -Z)
+    return { idx, isBot: !!def.isBot, remote: !!def.remote, startDead: !!def.dead, name: def.name, color: def.color, bike, bubble, flame,
       trailMat: new THREE.MeshBasicMaterial({ color: def.color }), trailSegs: [], trailMeshes: [],
       x: 0, z: 0, heading: 0, pitch: 0, speed: DM.moveSpeed, alive: true, lastTX: 0, lastTZ: 0, trailInit: false,
       air: 0, y: 0, head: 0, airFlag: false,   // jump timer / height / head-look / remote airborne
@@ -628,6 +635,7 @@ function createArenaWorld(riderDefs, modeKey = 'score') {
     }
     r.alive = true; r.bike.visible = true; r.speed = DM.moveSpeed; r.pitch = 0; r.air = 0; r.y = 0;
     r.trailInit = false; r.invuln = DM.invulnTime; r.boost = 0; r.shield = 0;
+    if (r.idx === 0) sfx.play('respawn');
   }
   // hand each living rider a rank-based item (leaders weak, trailing strong)
   function grantItems() {
@@ -638,6 +646,7 @@ function createArenaWorld(riderDefs, modeKey = 'score') {
       if (r.item) return;            // keep an unused item
       const f = n > 1 ? rank / (n - 1) : 1;   // 0 = leader, 1 = last
       r.item = rank === 0 ? 'jump' : f >= 0.999 ? 'super' : f >= 0.5 ? 'shield' : 'boost';
+      if (r.idx === 0) sfx.play('item_grant');
     });
   }
   // use the held item (called for a rider by id)
@@ -666,7 +675,16 @@ function createArenaWorld(riderDefs, modeKey = 'score') {
     return bi;
   }
   function positionAll(dt) {
-    for (const r of riders) { r.bike.position.set(r.x, r.y || 0, r.z); r.bike.rotation.y = -r.heading; r.bike.rotation.x = r.pitch || 0; }
+    const tnow = performance.now();
+    for (const r of riders) {
+      r.bike.position.set(r.x, r.y || 0, r.z); r.bike.rotation.y = -r.heading; r.bike.rotation.x = r.pitch || 0;
+      // item VFX: shield bubble (shield/invuln) + boost flame
+      const shielded = r.alive && (r.shield > 0 || r.invuln > 0);
+      r.bubble.visible = shielded;
+      if (shielded) { r.bubble.material.opacity = 0.34 + 0.16 * Math.abs(Math.sin(tnow * 0.008)); r.bubble.material.color.setHex(r.shield > 0 ? 0xb59bff : 0x9fe0ff); }
+      r.flame.visible = r.alive && r.boost > 0;
+      if (r.flame.visible) r.flame.scale.set(1, 0.85 + 0.5 * Math.abs(Math.sin(tnow * 0.03)), 1);
+    }
     riders.forEach((r, i) => {
       const fx = Math.sin(r.heading), fz = -Math.cos(r.heading);
       const rx = Math.cos(r.heading), rz = Math.sin(r.heading); // right vector for head-look pan
