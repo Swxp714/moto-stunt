@@ -19,6 +19,24 @@ addEventListener('click', (e) => {
 // soft/angular 3D vehicle models keyed for in-game use
 const VMAP = Object.fromEntries(VEHICLES.map(v => [v.key, v]));
 const DEFAULT_VEHICLE = 'dirtbike';
+// emoji icons for lobby slot cards (kart unknown until chosen -> generic 🛵)
+const VEH_EMOJI = { scooter: '🛵', dirtbike: '🏍️', sportbike: '🏎️', wheelbarrow: '🛒' };
+function vehEmoji(key) { return VEH_EMOJI[key] || '🛵'; }
+// build one pixel slot card; empty slot -> dimmed 대기중
+function makeSlot(opts) {
+  const c = document.createElement('div');
+  c.className = 'slot' + (opts.cls ? ' ' + opts.cls : '');
+  if (opts.empty) {
+    c.classList.add('empty');
+    c.innerHTML = `<span class="s-num">${opts.num}</span><span class="s-veh">🏍️</span><span class="s-name">대기중...</span>`;
+    return c;
+  }
+  const veh = `<span class="s-veh">${opts.vehKey ? vehEmoji(opts.vehKey) : '🛵'}</span>`;
+  const sub = opts.sub ? `<span class="s-sub">${opts.sub}</span>` : '';
+  const rdy = opts.rdy ? `<span class="s-rdy">${opts.rdy}</span>` : '';
+  c.innerHTML = `<span class="s-num">${opts.num}</span>${veh}<span class="s-name">${opts.name}</span>${sub}${rdy}`;
+  return c;
+}
 // build a vehicle model oriented for the game (forward = -Z) with a rider mounted
 function buildVehicleModel(key, bodyColor, riderColor) {
   const v = VMAP[key] || VMAP[DEFAULT_VEHICLE];
@@ -1422,13 +1440,19 @@ function dmRenderLobby() {
   const ready = list.filter(p => p.ready).length;
   $('lobbyCount').textContent = `👥 ${list.length}/8명 입장 · 준비 ${ready}/${list.length}`;
   const el = $('lobbyPlayers'); el.innerHTML = '';
-  list.slice().sort((a, b) => a.slot - b.slot).forEach(p => {
-    const c = document.createElement('div');
-    c.className = 'pcard' + (p.ready ? ' ready' : '');
-    c.style.color = '#' + DM_COLORS[p.slot % 8].toString(16).padStart(6, '0');
-    c.innerHTML = (p.slot === online.mySlot ? '나' : ('P' + (p.slot + 1))) + '<span class="rdy">' + (p.ready ? '준비' : '대기') + '</span>';
-    el.appendChild(c);
-  });
+  const bySlot = {}; list.forEach(p => { bySlot[p.slot] = p; });
+  for (let s = 0; s < 8; s++) {
+    const p = bySlot[s];
+    if (!p) { el.appendChild(makeSlot({ num: 'P' + (s + 1), empty: true })); continue; }
+    const me = s === online.mySlot;
+    const card = makeSlot({
+      num: 'P' + (s + 1), name: me ? '나' : ('P' + (s + 1)),
+      cls: (me ? 'me' : 'bot') + (p.ready ? ' ready' : ''),
+      rdy: p.ready ? '✔ READY' : '대기',
+    });
+    if (!me) { card.querySelector('.s-name').style.color = '#' + DM_COLORS[s % 8].toString(16).padStart(6, '0'); }
+    el.appendChild(card);
+  }
 }
 function dmMaybeStart() {
   if (!net || !net.isHost || online.started) return;
@@ -1485,7 +1509,7 @@ function openLobby(code, isHost) {
   $('lobbyCode').textContent = code; $('btnReady').textContent = '준비';
   showScreen('lobby');
   if (online.gameType === 'dm') {
-    $('raceCards').style.display = 'none'; $('lobbyPlayers').style.display = 'flex';
+    $('raceCards').style.display = 'none'; $('lobbyPlayers').style.display = 'grid';
     $('btnCopyLink').style.display = 'block'; $('lobbyCount').style.display = 'block';
     online.myReady = false;
     if (isHost) { online.mySlot = 0; online.players = [{ slot: 0, connId: null, ready: false }]; dmBroadcastLobby(); }
@@ -1593,11 +1617,15 @@ function renderSetup() {
   $('botCount').textContent = setup.bots;
   $('setupHint').textContent = botsAllowed ? `최대 ${maxBots}` : '';
   const roster = $('setupRoster'); roster.innerHTML = '';
-  const add = (label, cls) => { const d = document.createElement('div'); d.className = 'rchip ' + cls; d.textContent = label; roster.appendChild(d); };
-  add('나', 'me');
-  if (setup.kind === 'local') add('P2', 'me');
-  if (setup.kind === 'online') add('+ 참가자', 'bot');
-  if (botsAllowed) for (let i = 0; i < setup.bots; i++) add('봇' + (i + 1), 'bot');
+  // build slot list: me (+ P2 local) + bots, padded to 8 with empty 대기중 cards
+  const slots = [{ name: '나', cls: 'me' }];
+  if (setup.kind === 'local') slots.push({ name: 'P2', cls: 'me' });
+  if (setup.kind === 'online') slots.push({ name: '참가자', cls: 'bot', sub: '코드 공유' });
+  if (botsAllowed) for (let i = 0; i < setup.bots; i++) slots.push({ name: '봇' + (i + 1), cls: 'bot' });
+  for (let i = 0; i < 8; i++) {
+    const s = slots[i];
+    roster.appendChild(s ? makeSlot({ num: 'P' + (i + 1), name: s.name, cls: s.cls, sub: s.sub }) : makeSlot({ num: 'P' + (i + 1), empty: true }));
+  }
   $('btnStartMatch').textContent = setup.kind === 'online' ? '방으로 ▶' : '시작 ▶';
 }
 $('gtRace').onclick = () => { setup.gameType = 'race'; renderSetup(); };
