@@ -8,6 +8,10 @@ export const DEFAULT_VEHICLE = 'dirtbike';
 export const VEH_EMOJI = { scooter: '🛵', dirtbike: '🏍️', sportbike: '🏎️', wheelbarrow: '🛒' };
 export function vehEmoji(key) { return VEH_EMOJI[key] || '🛵'; }
 
+// per-vehicle stat multipliers (vs scooter baseline = all 1). See docs/VEHICLE_DESIGN.md.
+const DEFAULT_STATS = { speed: 1, turn: 1, maxPitch: 1, wheelie: 1, item: 1, trail: 1 };
+export function vehStats(key) { return (VMAP[key] && VMAP[key].stats) || DEFAULT_STATS; }
+
 // the inner 3D model (rider mounted), oriented + scaled for the in-game camera
 export function buildVehicleModel(key, bodyColor, riderColor) {
   const v = VMAP[key] || VMAP[DEFAULT_VEHICLE];

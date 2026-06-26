@@ -265,9 +265,17 @@ function mountRider(vehicleGroup, seat, bodyColor) {
 
 export { buildScooter, buildDirtBike, buildSportBike, buildWheelbarrow, buildRider, mountRider };
 
+// stats = per-vehicle multipliers vs the scooter baseline (all 1.0). See docs/VEHICLE_DESIGN.md.
+//   speed  -> DM.moveSpeed / CFG.baseSpeed     turn -> DM.turnRate / CFG.steerSpeed
+//   maxPitch -> wheelie flip cap               wheelie -> DM.wheelieMul / CFG.wheelieSpeedMul
+//   item -> item cadence (lower thresholds)    trail -> DM.trailMax (tail length)
 export const VEHICLES = [
-  { key: 'scooter',     name: '배달 스쿠터',  build: buildScooter,     seat: { x: -0.35, y: 1.42, z: 0, grip: { x: 0.74, y: 1.78, z: 0.34 } } },
-  { key: 'dirtbike',    name: '더트바이크',    build: buildDirtBike,    seat: { x: -0.4,  y: 1.62, z: 0, grip: { x: 0.72, y: 1.82, z: 0.42 } } },
-  { key: 'sportbike',   name: '스포츠바이크',  build: buildSportBike,   seat: { x: -0.05, y: 1.32, z: 0, grip: { x: 1.12, y: 1.36, z: 0.32 } } },
-  { key: 'wheelbarrow', name: '손수레',        build: buildWheelbarrow, disp: 1.0, seat: { pose: 'push', x: -2.25, y: 0, z: 0, grip: { x: -1.6, y: 1.32, z: 0.42 } } },
+  { key: 'scooter',     name: '배달 스쿠터',  build: buildScooter,     seat: { x: -0.35, y: 1.42, z: 0, grip: { x: 0.74, y: 1.78, z: 0.34 } },
+    stats: { speed: 1.00, turn: 1.00, maxPitch: 1.00, wheelie: 1.00, item: 1.00, trail: 1.00 } },
+  { key: 'dirtbike',    name: '더트바이크',    build: buildDirtBike,    seat: { x: -0.4,  y: 1.62, z: 0, grip: { x: 0.72, y: 1.82, z: 0.42 } },
+    stats: { speed: 0.97, turn: 1.10, maxPitch: 1.50, wheelie: 1.15, item: 1.00, trail: 0.95 } },
+  { key: 'sportbike',   name: '스포츠바이크',  build: buildSportBike,   seat: { x: -0.05, y: 1.32, z: 0, grip: { x: 1.12, y: 1.36, z: 0.32 } },
+    stats: { speed: 1.12, turn: 0.82, maxPitch: 0.90, wheelie: 1.05, item: 0.90, trail: 1.15 } },
+  { key: 'wheelbarrow', name: '손수레',        build: buildWheelbarrow, disp: 1.0, seat: { pose: 'push', x: -2.25, y: 0, z: 0, grip: { x: -1.6, y: 1.32, z: 0.42 } },
+    stats: { speed: 0.85, turn: 1.05, maxPitch: 0.80, wheelie: 0.90, item: 1.50, trail: 0.80 } },
 ];

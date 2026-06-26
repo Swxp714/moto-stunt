@@ -3,7 +3,7 @@
 // scorePop is injected (UI decoupled). Deps: THREE, config, bike, sfx.
 import * as THREE from 'three';
 import { CFG, STATE, DM, DM_MODES } from './config.js';
-import { buildBike } from './bike.js';
+import { buildBike, vehStats } from './bike.js';
 import { at } from '../models/_kit.js';
 import { buildGridFloor } from './scene.js';
 import sfx from './sfx.js';
@@ -63,6 +63,7 @@ export function createArenaWorld(riderDefs, modeKey = 'score', scorePop = () => 
 
   // --- riders ---
   function makeRider(def, idx) {
+    const st = vehStats(def.vehicle);   // per-vehicle stat multipliers (see VEHICLE_DESIGN.md)
     const bike = buildBike(def.color, { vehicle: def.vehicle }); scene.add(bike);
     bike.rotation.order = 'YXZ';   // yaw (heading) then pitch (wheelie)
     // item VFX (children of the bike): shield bubble + boost flame, toggled in positionAll
@@ -79,8 +80,10 @@ export function createArenaWorld(riderDefs, modeKey = 'score', scorePop = () => 
     for (let kk = 0; kk < 5; kk++) { const a = kk / 5 * Math.PI * 2; const sp = new THREE.Mesh(new THREE.ConeGeometry(0.12, 0.34, 6), goldMat); sp.position.set(Math.cos(a) * 0.46, 0.28, Math.sin(a) * 0.46); crown.add(sp); }
     crown.position.y = 3.5; crown.visible = false; bike.add(crown);
     return { idx, isBot: !!def.isBot, remote: !!def.remote, startDead: !!def.dead, name: def.name, color: def.color, bike, bubble, flame, crown,
+      st, trailCap: Math.round(DM.trailMax * st.trail),                 // per-vehicle stats + tail cap
+      killEvery: Math.max(1, Math.round(3 / st.item)), deathEvery: Math.max(1, Math.round(2 / st.item)),  // item cadence
       trailMat: new THREE.MeshBasicMaterial({ color: def.color }), trailSegs: [], trailMeshes: [],
-      x: 0, z: 0, heading: 0, pitch: 0, speed: DM.moveSpeed, alive: true, lastTX: 0, lastTZ: 0, trailInit: false,
+      x: 0, z: 0, heading: 0, pitch: 0, speed: DM.moveSpeed * st.speed, alive: true, lastTX: 0, lastTZ: 0, trailInit: false,
       air: 0, y: 0, head: 0, airFlag: false,   // jump timer / height / head-look / remote airborne
       score: 0, lives: 0, respawnT: 0, invuln: 0, lastKiller: -1,  // score / lives / respawn / invincibility / killer
       kills: 0, deaths: 0,                      // for item rewards (3 kills / 2 deaths)
@@ -97,7 +100,7 @@ export function createArenaWorld(riderDefs, modeKey = 'score', scorePop = () => 
     mesh.position.set((x1 + x2) / 2, y0 + DM.trailH / 2, (z1 + z2) / 2);   // y0>0 = floating wall (laid mid-jump) you can pass under
     mesh.rotation.y = Math.atan2(dx, dz);
     scene.add(mesh); r.trailSegs.push({ x1, z1, x2, z2, y0 }); r.trailMeshes.push(mesh);
-    if (r.trailSegs.length > DM.trailMax) { const old = r.trailMeshes.shift(); scene.remove(old); old.geometry.dispose(); r.trailSegs.shift(); }
+    if (r.trailSegs.length > r.trailCap) { const old = r.trailMeshes.shift(); scene.remove(old); old.geometry.dispose(); r.trailSegs.shift(); }
   }
   function clearRiderTrail(r) { for (const m of r.trailMeshes) { scene.remove(m); m.geometry.dispose(); } r.trailMeshes.length = 0; r.trailSegs.length = 0; r.trailInit = false; }
   function emitTrail(r) {
@@ -181,7 +184,7 @@ export function createArenaWorld(riderDefs, modeKey = 'score', scorePop = () => 
       let dh = ((wantH - r.heading + Math.PI * 3) % (Math.PI * 2)) - Math.PI;   // signed turn, [-π,π]
       pursueSteer = Math.max(-1, Math.min(1, dh * 1.6));
       // wheelie burst to close distance when far + the lane ahead is clear (and not about to flip)
-      wantWheelie = tdist > 24 && fwdClear >= 12 && r.pitch < CFG.maxPitch * 0.78;
+      wantWheelie = tdist > 24 && fwdClear >= 12 && r.pitch < CFG.maxPitch * r.st.maxPitch * 0.78;
     }
 
     // 3) BLEND: pursue when the road ahead is open; let avoidance take over as danger closes in
@@ -191,7 +194,7 @@ export function createArenaWorld(riderDefs, modeKey = 'score', scorePop = () => 
     if (fwdClear <= 4) steer = safeSteer;                            // imminent collision: pure escape
 
     // 4) WHEELIE control (bots manage their own pitch; never flip — respect maxPitch)
-    const flipGuard = CFG.maxPitch * 0.82;
+    const flipGuard = CFG.maxPitch * r.st.maxPitch * 0.82;
     if (wantWheelie && danger < 0.3) {
       r.pitch = Math.min(flipGuard, r.pitch + CFG.pitchRiseRate * 0.7 * dt);
     } else {
@@ -294,7 +297,7 @@ export function createArenaWorld(riderDefs, modeKey = 'score', scorePop = () => 
     riders.forEach((r, i) => {
       const a = n > 1 ? (i * Math.PI * 2 / n) : 0, sr = n > 1 ? Math.min(DM.startR, mode.startR * 0.6) : 0;
       r.x = Math.sin(a) * sr; r.z = Math.cos(a) * sr; r.heading = (n > 1 ? Math.PI / 2 - a : 0); // tangent (circle), single=forward
-      r.alive = !r.startDead; r.speed = DM.moveSpeed; r.trailInit = false; r.bike.visible = !r.startDead;
+      r.alive = !r.startDead; r.speed = DM.moveSpeed * r.st.speed; r.trailInit = false; r.bike.visible = !r.startDead;
       r.pitch = 0; r.air = 0; r.y = 0; r.head = 0; r.bike.rotation.x = 0;
       r.score = 0; r.respawnT = 0; r.invuln = 0; r.item = null; r.boost = 0; r.shield = 0;
       r.kills = 0; r.deaths = 0; r.rsX = null;
@@ -315,7 +318,7 @@ export function createArenaWorld(riderDefs, modeKey = 'score', scorePop = () => 
   function respawnRider(r) {
     if (r.rsX != null) { r.x = r.rsX; r.z = r.rsZ; r.heading = r.rsH; r.rsX = null; }   // camera already panned here
     else { const s = pickRespawn(r); r.x = s.x; r.z = s.z; r.heading = s.h; }
-    r.alive = true; r.bike.visible = true; r.speed = DM.moveSpeed; r.pitch = 0; r.air = 0; r.y = 0;
+    r.alive = true; r.bike.visible = true; r.speed = DM.moveSpeed * r.st.speed; r.pitch = 0; r.air = 0; r.y = 0;
     r.trailInit = false; r.invuln = DM.invulnTime; r.boost = 0; r.shield = 0;
     if (r.idx === 0) sfx.play('respawn');
   }
@@ -350,10 +353,10 @@ export function createArenaWorld(riderDefs, modeKey = 'score', scorePop = () => 
   function applyDeath(r, killerIdx, cause) {
     if (!r.alive) return;
     r.score -= 1;
-    r.deaths++; if (r.deaths % 2 === 0) grantItem(r, 'death');   // every 2 deaths -> a comeback item
+    r.deaths++; if (r.deaths % r.deathEvery === 0) grantItem(r, 'death');   // per-vehicle item cadence (손수레 every 1)
     if (killerIdx >= 0 && killerIdx !== r.idx && riders[killerIdx]) {
       const k = riders[killerIdx]; k.score += DM.killScore;
-      k.kills++; if (k.kills % 3 === 0) grantItem(k, 'kill');    // every 3 kills -> a light item
+      k.kills++; if (k.kills % k.killEvery === 0) grantItem(k, 'kill');    // per-vehicle item cadence (손수레 every 2)
       if (killerIdx === 0) { sfx.play('kill'); setTimeout(() => sfx.play('score_up'), 90); scorePop('+' + DM.killScore, 'plus'); }
     }
     r.alive = false; r.bike.visible = false; r.boost = 0; r.shield = 0; r.lastKiller = killerIdx;
@@ -453,10 +456,10 @@ export function createArenaWorld(riderDefs, modeKey = 'score', scorePop = () => 
       if (!r.isBot) {   // wheelie: hold to lift front wheel & boost speed; too high = flip (but safe mid-air)
         const w = inp.wheelie || 0;
         r.pitch = Math.max(0, r.pitch + (w > 0 ? CFG.pitchRiseRate * w : CFG.pitchFallRate * w) * dt);
-        if (r.pitch > CFG.maxPitch && !airborne) { dead = true; cause = '윌리 전복'; }
+        if (r.pitch > CFG.maxPitch * r.st.maxPitch && !airborne) { dead = true; cause = '윌리 전복'; }
       }
-      r.speed = DM.moveSpeed * (1 + (DM.wheelieMul - 1) * Math.min(1, r.pitch / CFG.maxPitch)) * (r.boost > 0 ? 1.6 : 1);
-      r.heading += steer * DM.turnRate * dt;
+      r.speed = DM.moveSpeed * r.st.speed * (1 + (DM.wheelieMul * r.st.wheelie - 1) * Math.min(1, r.pitch / (CFG.maxPitch * r.st.maxPitch))) * (r.boost > 0 ? 1.6 : 1);
+      r.heading += steer * DM.turnRate * r.st.turn * dt;
       const fx = Math.sin(r.heading), fz = -Math.cos(r.heading);
       r.x += fx * r.speed * dt; r.z += fz * r.speed * dt;
 
@@ -497,7 +500,7 @@ export function createArenaWorld(riderDefs, modeKey = 'score', scorePop = () => 
     S.alive = riders[0].alive;
     S.nearEdge = riders[0].alive && Math.hypot(riders[0].x, riders[0].z) > arena.radius * 0.82;
 
-    for (const r of riders) if (r.alive && r.air <= 0 && r.pitch > CFG.maxPitch * 0.22) {   // no sparks while airborne (no ground contact)
+    for (const r of riders) if (r.alive && r.air <= 0 && r.pitch > CFG.maxPitch * r.st.maxPitch * 0.22) {   // no sparks while airborne (no ground contact)
       const sfx2 = Math.sin(r.heading), sfz2 = -Math.cos(r.heading);   // spew sparks from the rear wheel
       for (let s = 0; s < 4; s++) spawnSpark(r.x - sfx2 * 1.3 + (Math.random() - 0.5) * 0.7, 0.3, r.z - sfz2 * 1.3 + (Math.random() - 0.5) * 0.7);
     }
