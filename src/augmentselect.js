@@ -39,6 +39,8 @@ function injectCSS() {
   .aug-strip{height:34px;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;letter-spacing:.12em;
     color:#06060c;background:var(--tc,#9fb2c8);border-radius:9px 9px 0 0;text-transform:uppercase}
   .aug-icon{font-size:74px;text-align:center;line-height:1;margin:20px 0 6px;text-shadow:0 4px 0 rgba(0,0,0,.5)}
+  .aug-icon-img{display:block;width:84px;height:84px;object-fit:contain;margin:18px auto 6px;image-rendering:pixelated;
+    filter:drop-shadow(0 4px 0 rgba(0,0,0,.5))}
   .aug-name{text-align:center;font-size:19px;font-weight:800;color:var(--ink,#eaf2ff);margin:6px 12px 8px;min-height:24px}
   .aug-badge{display:block;width:max-content;margin:0 auto 12px;font-size:11px;font-weight:800;color:#06060c;
     padding:2px 10px;border-radius:7px;background:var(--tc,#9fb2c8)}
@@ -79,9 +81,12 @@ export function openAugmentSelect({
       <div class="aug-cards">
         ${opts.map((o, i) => {
           const t = TIER[o.tier] || TIER.silver;
+          const iconHtml = o.img
+            ? `<img class="aug-icon-img" src="${o.img}" alt="">`
+            : `<div class="aug-icon">${o.icon || '✨'}</div>`;
           return `<div class="aug-card ${o.tier}" data-i="${i}" style="--tc:${t.c}">
             <div class="aug-strip">${t.lab}</div>
-            <div class="aug-icon">${o.icon || '✨'}</div>
+            ${iconHtml}
             <div class="aug-name">${o.name || ''}</div>
             <span class="aug-badge">${t.lab}</span>
             <div class="aug-desc">${o.desc || ''}</div>

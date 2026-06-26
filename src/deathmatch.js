@@ -11,7 +11,9 @@ import sfx from './sfx.js';
 // resolved augment mods (레전드 정규전). The controller passes def.aug already resolved
 // (resolveMods in models/augments.js); deathmatch.js stays decoupled. No augments -> NO_AUG (identity).
 const NO_AUG = { speedMul: 1, turnMul: 1, wheelieMul: 1, maxPitchMul: 1, trailMul: 1,
-  boostDurAdd: 0, shieldDurAdd: 0, invulnAdd: 0, killEveryDelta: 0, deathEveryDelta: 0, startItem: null };
+  boostDurAdd: 0, shieldDurAdd: 0, invulnAdd: 0, killEveryDelta: 0, deathEveryDelta: 0,
+  boostMul: 0, jumpHeightMul: 1, jumpTimeMul: 1, startItem: null,
+  chainBoost: false, reviveOnce: false, jumpFlip: false, plantMine: false };
 
 export function createArenaWorld(riderDefs, modeKey = 'score', scorePop = () => {}) {
   const mode = DM_MODES[modeKey] || DM_MODES.score;
@@ -298,7 +300,7 @@ export function createArenaWorld(riderDefs, modeKey = 'score', scorePop = () => 
     arena.radius = mode.startR; ring.scale.setScalar(mode.startR / DM.arenaR);
     placePads();   // random jump-pad layout each game
     Object.assign(S, { time: 0, timeLeft: mode.timer || 0, itemT: null, mode: modeKey,
-      alive: true, nearEdge: false, over: false, winner: -1, result: '', cause: '' });
+      alive: true, nearEdge: false, over: false, winner: -1, result: '', cause: '', elimCount: 0 });
     const n = riders.length;
     riders.forEach((r, i) => {
       const a = n > 1 ? (i * Math.PI * 2 / n) : 0, sr = n > 1 ? Math.min(DM.startR, mode.startR * 0.6) : 0;
@@ -306,11 +308,11 @@ export function createArenaWorld(riderDefs, modeKey = 'score', scorePop = () => 
       r.alive = !r.startDead; r.speed = DM.moveSpeed * r.st.speed; r.trailInit = false; r.bike.visible = !r.startDead;
       r.pitch = 0; r.air = 0; r.y = 0; r.head = 0; r.bike.rotation.x = 0;
       r.score = 0; r.respawnT = 0; r.invuln = 0; r.item = r.aug.startItem; r.boost = 0; r.shield = 0;
-      r.kills = 0; r.deaths = 0; r.rsX = null;
+      r.kills = 0; r.deaths = 0; r.rsX = null; r.revived = false; r.elimAt = 0;
       r.lives = mode.maxLives === 0 ? Infinity : mode.maxLives;
       clearRiderTrail(r);
     });
-    clearExplosion(); clearDebris(); clearFx();
+    clearExplosion(); clearDebris(); clearFx(); clearMines();
   }
   // respawn a downed rider at a random spot away from trails (brief invincibility)
   function pickRespawn(r) {
@@ -349,10 +351,11 @@ export function createArenaWorld(riderDefs, modeKey = 'score', scorePop = () => 
   // use the held item (called for a rider by id)
   function useItem(idx) {
     const r = riders[idx]; if (!r || !r.alive || !r.item) return;
-    if (r.item === 'jump') r.air = DM.jumpTime;
+    if (r.item === 'jump') { r.air = DM.jumpTime * r.aug.jumpTimeMul; r.airMax = r.air; }
     else if (r.item === 'boost') r.boost = 2.2 + r.aug.boostDurAdd;
     else if (r.item === 'shield') r.shield = 3.0 + r.aug.shieldDurAdd;
     else if (r.item === 'super') { r.shield = 4.0 + r.aug.shieldDurAdd; r.boost = 4.0 + r.aug.boostDurAdd; }
+    if (r.aug.plantMine) plantMineAt(r.x, r.z, r.idx);   // 지뢰 농부: drop a 새싹 지뢰 on item use
     r.item = null;
   }
   // death = score -1, killer +2; respawn if the rider still has lives (mode-dependent)
@@ -363,11 +366,14 @@ export function createArenaWorld(riderDefs, modeKey = 'score', scorePop = () => 
     if (killerIdx >= 0 && killerIdx !== r.idx && riders[killerIdx]) {
       const k = riders[killerIdx]; k.score += DM.killScore;
       k.kills++; if (k.kills % k.killEvery === 0) grantItem(k, 'kill');    // per-vehicle item cadence (손수레 every 2)
+      if (k.aug.chainBoost) k.boost = Math.max(k.boost, 2.0);             // DID 레이싱 체인: kill -> 2s boost
       if (killerIdx === 0) { sfx.play('kill'); setTimeout(() => sfx.play('score_up'), 90); scorePop('+' + DM.killScore, 'plus'); }
     }
     r.alive = false; r.bike.visible = false; r.boost = 0; r.shield = 0; r.lastKiller = killerIdx;
-    r.lives = Math.max(0, r.lives - 1);              // Infinity-1 = Infinity (score mode)
+    if (r.aug.reviveOnce && !r.revived) r.revived = true;   // 케블라 슈트: first death this round is free
+    else r.lives = Math.max(0, r.lives - 1);                // Infinity-1 = Infinity (score mode)
     r.respawnT = r.lives > 0 ? DM.respawnDelay : 0;  // 0 lives -> eliminated (no respawn)
+    if (r.lives <= 0 && !r.elimAt) r.elimAt = ++S.elimCount;   // record elimination order (rank-based legend scoring)
     if (r.lives > 0) { const s = pickRespawn(r); r.rsX = s.x; r.rsZ = s.z; r.rsH = s.h; }  // choose spot now; camera pans there during the delay
     spawnExplosion(r.x, 1.4, r.z); spawnDebris(r.x, 1.2, r.z, r.color); clearRiderTrail(r);
     if (r.idx === 0) { S.cause = cause; sfx.play('dm_death'); scorePop('-1', 'minus'); }
@@ -377,11 +383,38 @@ export function createArenaWorld(riderDefs, modeKey = 'score', scorePop = () => 
     riders.forEach(r => { if (!r.startDead && r.score > best) { best = r.score; bi = r.idx; } });
     return bi;
   }
+  // --- 새싹 지뢰 (손수레 '지뢰 농부' 증강) — plant on item use, detonates on enemy contact ---
+  const mines = [];
+  const mineMat = new THREE.MeshStandardMaterial({ color: 0x4fd06a, emissive: 0x123d20, emissiveIntensity: 0.6, roughness: 0.5, flatShading: true });
+  function plantMineAt(x, z, owner) {
+    const g = new THREE.Group();
+    const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.16, 0.42, 6), mineMat); stem.position.y = 0.22; g.add(stem);
+    for (let i = 0; i < 3; i++) { const a = i / 3 * Math.PI * 2; const leaf = new THREE.Mesh(new THREE.ConeGeometry(0.2, 0.46, 5), mineMat); leaf.position.set(Math.cos(a) * 0.16, 0.46, Math.sin(a) * 0.16); leaf.rotation.set(0.6, a, 0); g.add(leaf); }
+    g.position.set(x, 0.1, z); scene.add(g);
+    mines.push({ x, z, owner, arm: 0.7, t: 0, life: 18, mesh: g });
+    if (mines.length > 8) removeMine(0);   // cap: drop the oldest
+  }
+  function removeMine(i) { const m = mines[i]; if (!m) return; scene.remove(m.mesh); m.mesh.traverse(o => o.geometry && o.geometry.dispose()); mines.splice(i, 1); }
+  function clearMines() { while (mines.length) removeMine(0); }
+  function updateMines(dt) {
+    for (let i = mines.length - 1; i >= 0; i--) {
+      const m = mines[i]; m.t += dt; m.life -= dt; if (m.arm > 0) m.arm -= dt;
+      m.mesh.rotation.y += dt * 1.6; m.mesh.position.y = 0.1 + Math.sin(m.t * 4) * 0.07;
+      if (m.life <= 0) { removeMine(i); continue; }
+      if (m.arm > 0) continue;
+      for (const r of riders) {
+        if (!r.alive || r.idx === m.owner || r.air > 0 || r.invuln > 0 || r.startDead) continue;   // owner-safe · airborne hops over · invuln immune
+        if (Math.hypot(r.x - m.x, r.z - m.z) < 2.4) { spawnExplosion(m.x, 0.8, m.z); applyDeath(r, m.owner, '지뢰'); removeMine(i); break; }
+      }
+    }
+  }
   function positionAll(dt) {
     const tnow = performance.now();
     const leaderIdx = topScorer();
     for (const r of riders) {
-      r.bike.position.set(r.x, r.y || 0, r.z); r.bike.rotation.y = -r.heading; r.bike.rotation.x = r.pitch || 0;
+      r.bike.position.set(r.x, r.y || 0, r.z); r.bike.rotation.y = -r.heading;
+      const flip = (r.aug.jumpFlip && r.air > 0 && r.airMax) ? (1 - r.air / r.airMax) * Math.PI * 2 : 0;   // 모토크로스 킷: 점프대 백플립 1회전
+      r.bike.rotation.x = (r.pitch || 0) + flip;
       // shield item -> bubble; post-respawn invuln -> blink the bike (반투명 깜빡)
       r.bubble.visible = r.alive && r.shield > 0;
       if (r.bubble.visible) r.bubble.material.opacity = 0.34 + 0.16 * Math.abs(Math.sin(tnow * 0.008));
@@ -455,16 +488,16 @@ export function createArenaWorld(riderDefs, modeKey = 'score', scorePop = () => 
 
       // jump pad launch + airborne parabola (over trails, immune while flying)
       if (r.air > 0) r.air -= dt;
-      else for (const p of PADS) if (Math.hypot(r.x - p.x, r.z - p.z) < DM.jumpPadR) { r.air = DM.jumpTime; relocatePad(p); if (r.idx === 0) sfx.play('jump_launch'); break; }   // pad used -> moves elsewhere
+      else for (const p of PADS) if (Math.hypot(r.x - p.x, r.z - p.z) < DM.jumpPadR) { r.air = DM.jumpTime * r.aug.jumpTimeMul; r.airMax = r.air; relocatePad(p); if (r.idx === 0) sfx.play('jump_launch'); break; }   // pad used -> moves elsewhere
       const airborne = r.air > 0;
-      r.y = airborne ? Math.sin((1 - r.air / DM.jumpTime) * Math.PI) * DM.jumpHeight : 0;
+      r.y = airborne ? Math.sin((1 - r.air / (r.airMax || DM.jumpTime)) * Math.PI) * DM.jumpHeight * r.aug.jumpHeightMul : 0;
 
       if (!r.isBot) {   // wheelie: hold to lift front wheel & boost speed; too high = flip (but safe mid-air)
         const w = inp.wheelie || 0;
         r.pitch = Math.max(0, r.pitch + (w > 0 ? CFG.pitchRiseRate * w : CFG.pitchFallRate * w) * dt);
         if (r.pitch > CFG.maxPitch * r.st.maxPitch * r.aug.maxPitchMul && !airborne) { dead = true; cause = '윌리 전복'; }
       }
-      r.speed = DM.moveSpeed * r.st.speed * r.aug.speedMul * (1 + (DM.wheelieMul * r.st.wheelie * r.aug.wheelieMul - 1) * Math.min(1, r.pitch / (CFG.maxPitch * r.st.maxPitch * r.aug.maxPitchMul))) * (r.boost > 0 ? 1.6 : 1);
+      r.speed = DM.moveSpeed * r.st.speed * r.aug.speedMul * (1 + (DM.wheelieMul * r.st.wheelie * r.aug.wheelieMul - 1) * Math.min(1, r.pitch / (CFG.maxPitch * r.st.maxPitch * r.aug.maxPitchMul))) * (r.boost > 0 ? (1.6 + r.aug.boostMul) : 1);   // 아크라포빅: boostMul
       r.heading += steer * DM.turnRate * r.st.turn * r.aug.turnMul * dt;
       const fx = Math.sin(r.heading), fz = -Math.cos(r.heading);
       r.x += fx * r.speed * dt; r.z += fz * r.speed * dt;
@@ -510,7 +543,7 @@ export function createArenaWorld(riderDefs, modeKey = 'score', scorePop = () => 
       const sfx2 = Math.sin(r.heading), sfz2 = -Math.cos(r.heading);   // spew sparks from the rear wheel
       for (let s = 0; s < 4; s++) spawnSpark(r.x - sfx2 * 1.3 + (Math.random() - 0.5) * 0.7, 0.3, r.z - sfz2 * 1.3 + (Math.random() - 0.5) * 0.7);
     }
-    updateExplosion(dt); updateDebris(dt); updateSparks(dt); updateFw(dt);
+    updateExplosion(dt); updateDebris(dt); updateSparks(dt); updateFw(dt); updateMines(dt);
     positionAll(dt);
   }
   reset();

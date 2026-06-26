@@ -31,8 +31,15 @@ export function createLegendMatch({ humanVehicle = 'dirtbike', humanColor = 0xff
     roundClock: 0, interClock: 0, ending: null, banner: '', lastOffer: [],
   };
 
-  function placement(w) {   // finishing order by score (same sort as showDmStandings)
-    return w.riders.filter(r => !r.startDead).sort((a, b) => b.score - a.score).map(r => r.idx);
+  // finishing RANK (등수): survivors first, then by elimination order (last eliminated ranks higher).
+  // 1등 = 최후 생존자 → DM_PTS[0] (최다 점수). kills still drive survival + the survivor tiebreak.
+  function placement(w) {
+    return w.riders.filter(r => !r.startDead).sort((a, b) => {
+      const aAlive = a.lives > 0, bAlive = b.lives > 0;
+      if (aAlive !== bAlive) return aAlive ? -1 : 1;        // survivor outranks eliminated
+      if (aAlive && bAlive) return b.score - a.score;       // tied survivors (timer cap) -> by score
+      return (b.elimAt || 0) - (a.elimAt || 0);             // eliminated -> later elimination ranks higher
+    }).map(r => r.idx);
   }
   function buildRound() {
     disposeWorld(M.world);
@@ -43,7 +50,7 @@ export function createLegendMatch({ humanVehicle = 'dirtbike', humanColor = 0xff
   function applyPicks(humanPickedId) {
     const me = players[M.localSlot];
     if (humanPickedId) me.augments.push(humanPickedId);
-    for (const p of players) if (p.idx !== M.localSlot) { const id = botPickAugment(p.augments); if (id) p.augments.push(id); }
+    for (const p of players) if (p.idx !== M.localSlot) { const id = botPickAugment(p.augments, Math.random, M.defs[p.idx].vehicle); if (id) p.augments.push(id); }
     M.defs.forEach((d, i) => { d.aug = resolveMods(players[i].augments, d.vehicle, 'dm'); });
     buildRound();
   }

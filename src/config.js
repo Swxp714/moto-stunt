@@ -26,21 +26,21 @@ export const CFG = {
 export const STATE = { RIDING: 'riding', CRASHED: 'crashed', FINISHED: 'finished' };
 
 // --- deathmatch (createArenaWorld) tuning ---
-export const DM = { moveSpeed: 34, turnRate: 2.6, arenaR: 95, startR: 42,
-  trailGap: 1.6, trailW: 1.2, trailH: 2.4, graceSegs: 6, trailMax: 55, // tail length cap (shorter)
-  shrinkRate: 2.4, minR: 16, wheelieMul: 2.4,      // shrink rate; wheelie speed boost (stronger)
-  jumpPadR: 3.8, jumpTime: 0.85, jumpHeight: 7, jumpPads: 7,  // jump ramps
+export const DM = { moveSpeed: 34, turnRate: 2.6, arenaR: 135, startR: 58,
+  trailGap: 1.6, trailW: 1.2, trailH: 2.4, graceSegs: 6, trailMax: 68, // tail length cap
+  shrinkRate: 2.4, minR: 32, wheelieMul: 2.4,      // shrink rate; wheelie speed boost (stronger)
+  jumpPadR: 3.8, jumpTime: 0.85, jumpHeight: 7, jumpPads: 9,  // jump ramps
   // --- shared score/respawn tuning ---
-  matchTime: 300, respawnDelay: 2, invulnTime: 2.2, killScore: 2, minR: 16,
+  matchTime: 300, respawnDelay: 2, invulnTime: 2.2, killScore: 2, minR: 32,
   itemInterval: 20 };   // rank-based item handed out every N seconds
 
-// three deathmatch sub-modes
+// three deathmatch sub-modes  (arenas enlarged — big open maps)
 export const DM_MODES = {
-  score:    { name: '점수전 (5분)',   startR: 82, shrink: false, timer: 300, maxLives: 0, // 0 = infinite respawn
+  score:    { name: '점수전 (5분)',   startR: 128, shrink: false, timer: 300, maxLives: 0, // 0 = infinite respawn
     desc: '5분간 점수 경쟁 · 죽으면 −1 · 킬 +2 · 무한 리스폰 · 넓은 맵' },
-  survival: { name: '서바이벌 (즉사)', startR: 72, shrink: true,  timer: 0,   maxLives: 1,
+  survival: { name: '서바이벌 (즉사)', startR: 118, shrink: true,  timer: 0,   maxLives: 1,
     desc: '한 번 죽으면 끝 · 맵이 점점 좁아짐 · 최후의 1인 승리' },
-  lives:    { name: '목숨 3개',        startR: 72, shrink: true,  timer: 0,   maxLives: 3,
+  lives:    { name: '목숨 3개',        startR: 124, shrink: true,  timer: 0,   maxLives: 3,
     desc: '목숨 3개 · 맵이 좁아짐 · 다 잃으면 탈락 · 최후의 1인' },
 };
 

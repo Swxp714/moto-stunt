@@ -14,6 +14,7 @@ import { createArenaWorld } from './deathmatch.js';
 import { createLegendMatch } from './legend.js';
 import { openAugmentSelect } from './augmentselect.js';
 import { AUG_MAP } from '../models/augments.js';
+import { bakeAugmentIcons } from '../models/augment_models.js';
 import { buildGridFloor } from './scene.js';
 import { at } from '../models/_kit.js';
 import { buildItemModel, ITEM_KEYS } from '../models/items.js';
@@ -541,7 +542,7 @@ addEventListener('keydown', (e) => {
   if (e.code === 'Digit2' && !inMenu) setGameMode('2P');
   if (e.code === 'KeyM') setSource(inputSource === 'motion' ? 'keyboard' : 'motion');
   // item use (F = P1/single/online me, RightShift = P2 in local 2P). e.repeat guards auto-fire.
-  if (!e.repeat && !inMenu && arenaWorld && (gameMode === 'DM' || gameMode === 'DM2' || gameMode === 'DMO')) {
+  if (!e.repeat && !inMenu && arenaWorld && (gameMode === 'DM' || gameMode === 'DM2' || gameMode === 'DMO' || (gameMode === 'LEGEND' && legend && legend.phase === 'dm'))) {
     if (e.code === 'KeyF') { const i = gameMode === 'DMO' ? online.mySlot : 0; const it = arenaWorld.riders[i] && arenaWorld.riders[i].item; arenaWorld.useItem(i); if (it) sfx.play('item_' + it); }
     else if (e.code === 'ShiftRight' && gameMode === 'DM2') { const it = arenaWorld.riders[1] && arenaWorld.riders[1].item; arenaWorld.useItem(1); if (it) sfx.play('item_' + it); }
   }
@@ -667,6 +668,9 @@ function renderItemIcons() {
   } catch (e) { /* fall back to emoji icons */ }
 }
 renderItemIcons();
+// bake 3D augment icons once (motorcycle-part models) -> dataURLs, used by the augment-select cards
+let AUG_IMG = {};
+try { AUG_IMG = bakeAugmentIcons(renderer, THREE) || {}; } catch (e) { /* fall back to emoji */ }
 let itemRolling = false, lastLocalItem = null;
 function setItemIcon(key) {
   if (key && !ITEM_IMG[key] && ITEM_KEYS.includes(key)) renderItemIcons();   // lazy build if the eager render missed
@@ -730,7 +734,7 @@ async function startLegend(opts = {}) {
   if (legend) legend.dispose();
   // human augment pick -> the 3-card overlay; resolves the chosen augment id
   const openAugment = (pickIndex, options, vehicle) =>
-    openAugmentSelect({ options, pickIndex, totalPicks: LEGEND.dmRounds + 1, vehicle: vehEmoji(vehicle) });
+    openAugmentSelect({ options: options.map(o => ({ ...o, img: AUG_IMG[o.id] })), pickIndex, totalPicks: LEGEND.dmRounds + 1, vehicle: vehEmoji(vehicle) });
   legend = createLegendMatch({ scorePop, openAugment, ...opts });
   gameMode = 'LEGEND';
   closeMenu();
