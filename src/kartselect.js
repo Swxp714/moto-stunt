@@ -20,7 +20,7 @@ function injectCSS() {
   #ksRoot.on{display:block}
   #ksBg{position:absolute;inset:0;background:linear-gradient(180deg,#6fd0ff 0%,#4aa8ee 55%,#2f86d8 100%)}
   #ksBg::after{content:'';position:absolute;inset:0;opacity:.14;background-image:linear-gradient(45deg,#fff 25%,transparent 25%,transparent 75%,#fff 75%),linear-gradient(45deg,#fff 25%,transparent 25%,transparent 75%,#fff 75%);background-size:56px 56px;background-position:0 0,28px 28px}
-  #ksCanvas{position:absolute;inset:0;width:100%;height:100%}
+  #ksCanvas{position:absolute;inset:0;width:100%;height:100%;image-rendering:pixelated}
   #ksUi{position:absolute;inset:0;pointer-events:none}
   .ks-title{position:absolute;top:16px;left:0;right:0;text-align:center;color:#fff;font-size:24px;font-weight:800;letter-spacing:.05em;text-shadow:0 3px 0 #1c5fae}
   .ks-panel{position:absolute;top:92px;width:300px;padding:13px;border-radius:16px;background:rgba(255,255,255,.16);border:3px solid rgba(255,255,255,.5);box-shadow:0 8px 0 rgba(0,0,0,.12)}
@@ -68,8 +68,8 @@ export function openKartSelect(opts = {}) {
 
   // ---- 3D ----
   const canvas = root.querySelector('#ksCanvas');
-  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
-  renderer.setPixelRatio(Math.min(2, devicePixelRatio));
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, alpha: true });
+  renderer.setPixelRatio(1);   // render low-res + CSS pixelated → matches the game's dot look
   renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.08;
   const scene = new THREE.Scene();
@@ -157,7 +157,9 @@ export function openKartSelect(opts = {}) {
 
   function resize() {
     const w = innerWidth, h = innerHeight;
-    renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix();
+    const ps = Math.max(2, Math.min(5, Math.round(h / 270)));   // same dot density as the game
+    renderer.setSize(Math.max(2, Math.round(w / ps)), Math.max(2, Math.round(h / ps)), false);
+    camera.aspect = w / h; camera.updateProjectionMatrix();
   }
   addEventListener('resize', resize); resize();
 

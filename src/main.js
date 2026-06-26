@@ -545,6 +545,7 @@ function createArenaWorld(riderDefs, modeKey = 'score') {
   }
   function clearRiderTrail(r) { for (const m of r.trailMeshes) { scene.remove(m); m.geometry.dispose(); } r.trailMeshes.length = 0; r.trailSegs.length = 0; r.trailInit = false; }
   function emitTrail(r) {
+    if (r.invuln > 0) { r.trailInit = false; return; }   // no tail while post-respawn invincible; resume fresh when it ends
     if (!r.trailInit) { r.lastTX = r.x; r.lastTZ = r.z; r.trailInit = true; return; }
     if (Math.hypot(r.x - r.lastTX, r.z - r.lastTZ) >= DM.trailGap) { addSeg(r, r.lastTX, r.lastTZ, r.x, r.z); r.lastTX = r.x; r.lastTZ = r.z; }
   }
@@ -1853,17 +1854,28 @@ $('btnStartMatch').onclick = () => {
   else { if (setup.kind === 'solo') startDeathmatch(setup.bots); else startDeathmatchLocal2(setup.bots); }
 };
 $('btnBackMain').onclick = () => { teardownOnline(); showScreen('play'); };
-// main-screen side boxes: mute toggle + controls help
+// main-screen side boxes: sound settings (volume + mute), persisted to localStorage
 window.__muted = false;
-$('sideLeft').onclick = () => $('soundOverlay').classList.remove('hidden');
-$('soundClose').onclick = () => $('soundOverlay').classList.add('hidden');
-$('volSlider').oninput = (e) => { const v = +e.target.value; $('volVal').textContent = v; sfx.setVolume(v / 100); if (!window.__muted) sfx.play('ui_move'); };
-$('muteBtn').onclick = () => {
-  window.__muted = !window.__muted;
+function saveSettings() { try { localStorage.setItem('moto.snd', JSON.stringify({ vol: +$('volSlider').value, muted: window.__muted })); } catch (e) {} }
+function applyMuteUi() {
   $('muteBtn').textContent = window.__muted ? '🔇 음소거됨 — 해제' : '음소거';
   $('sideLeft').textContent = window.__muted ? '🔇' : '🔊';
   $('sideLeft').classList.toggle('muted', window.__muted);
-};
+}
+(function loadSettings() {
+  let v = Math.round(sfx.getVolume() * 100);   // default = sfx master volume
+  try {
+    const s = JSON.parse(localStorage.getItem('moto.snd') || '{}');
+    if (typeof s.vol === 'number') v = s.vol;
+    if (s.muted) window.__muted = true;
+  } catch (e) {}
+  $('volSlider').value = v; $('volVal').textContent = v; sfx.setVolume(v / 100);
+  applyMuteUi();
+})();
+$('sideLeft').onclick = () => $('soundOverlay').classList.remove('hidden');
+$('soundClose').onclick = () => $('soundOverlay').classList.add('hidden');
+$('volSlider').oninput = (e) => { const v = +e.target.value; $('volVal').textContent = v; sfx.setVolume(v / 100); if (!window.__muted) sfx.play('ui_move'); saveSettings(); };
+$('muteBtn').onclick = () => { window.__muted = !window.__muted; applyMuteUi(); saveSettings(); };
 $('btnExit').onclick = () => {
   if (!confirm('게임을 종료할까요?')) return;
   try { window.open('', '_self'); window.close(); } catch (e) {}
@@ -1946,9 +1958,10 @@ function loop() {
   if (inputSource === 'motion' && tracker.ready) tracker.detect(performance.now());
   updateMotionDbg();
 
-  // continuous engine drone (부릉부릉) — on while playing, pitch follows local speed
-  if (!inMenu && !engineOn) { sfx.engineStart(); engineOn = true; }
-  else if (inMenu && engineOn) { sfx.engineStop(); engineOn = false; }
+  // continuous engine drone (부릉부릉) — only while actually racing (not in menu / kart-select)
+  const racing = !inMenu && !document.getElementById('ksRoot');
+  if (racing && !engineOn) { sfx.engineStart(); engineOn = true; }
+  else if (!racing && engineOn) { sfx.engineStop(); engineOn = false; }
 
   // ---- TRAIL DEATHMATCH branch ----
   if ((gameMode === 'DM' || gameMode === 'DM2' || gameMode === 'DMO') && arenaWorld) {
