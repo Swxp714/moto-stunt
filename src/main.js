@@ -9,7 +9,7 @@ import { HandTracker, computeControls } from './hands.js';
 import { makeBayerTexture } from './pixelart.js';
 import { Net } from './net.js';
 import { VEHICLES, mountRider } from '../models/vehicles.js';
-import { VMAP, DEFAULT_VEHICLE, VEH_EMOJI, vehEmoji, buildBike } from './bike.js';
+import { VMAP, DEFAULT_VEHICLE, VEH_EMOJI, vehEmoji, buildBike, vehStats } from './bike.js';
 import { createArenaWorld } from './deathmatch.js';
 import { buildGridFloor } from './scene.js';
 import { at } from '../models/_kit.js';
@@ -111,9 +111,11 @@ function createWorld(bodyColor) {
   scene.add(buildRoad());
   let bike = buildBike(bodyColor); scene.add(bike);
   let myChoice = { vehicle: DEFAULT_VEHICLE, color: bodyColor };
+  let st = vehStats(myChoice.vehicle);   // per-vehicle stat multipliers (see VEHICLE_DESIGN.md)
   // swap the player's bike to a chosen vehicle + color (from kart select)
   function setVehicle(choice) {
     if (choice) myChoice = { vehicle: choice.vehicle || myChoice.vehicle, color: choice.color != null ? choice.color : myChoice.color };
+    st = vehStats(myChoice.vehicle); game.st = st;
     scene.remove(bike);
     bike.traverse(o => { if (o.geometry) o.geometry.dispose(); });
     bike = buildBike(myChoice.color, { vehicle: myChoice.vehicle });
@@ -251,7 +253,7 @@ function createWorld(bodyColor) {
 
   const camera = new THREE.PerspectiveCamera(62, 1, 0.1, 1000);
 
-  const game = { state: STATE.RIDING, distance: 0, laneX: 0, pitch: 0, turn: 0, speed: CFG.baseSpeed,
+  const game = { state: STATE.RIDING, distance: 0, laneX: 0, pitch: 0, turn: 0, speed: CFG.baseSpeed * st.speed, st,
     crashTimer: 0, invincible: 0, crashTilt: 0, startTime: performance.now(), finishTime: 0 };
   const fx = { flash: 0, flashColor: new THREE.Color(1, 1, 1), shake: 0 }; // screen effects
   const baseFov = 62;
@@ -259,7 +261,7 @@ function createWorld(bodyColor) {
   let respawnDist = 0, respawnLane = 0;
 
   function reset() {
-    Object.assign(game, { state: STATE.RIDING, distance: 0, laneX: 0, pitch: 0, speed: CFG.baseSpeed,
+    Object.assign(game, { state: STATE.RIDING, distance: 0, laneX: 0, pitch: 0, speed: CFG.baseSpeed * st.speed,
       turn: 0, crashTimer: 0, invincible: 0, crashTilt: 0, startTime: performance.now(), finishTime: 0, frozen: false });
     fx.flash = 0; fx.shake = 0; camera.fov = baseFov; camera.updateProjectionMatrix();
     history.length = 0; respawnDist = 0; respawnLane = 0;
@@ -280,7 +282,7 @@ function createWorld(bodyColor) {
   }
   function respawn() {
     game.state = STATE.RIDING; game.pitch = 0; game.crashTilt = 0;
-    game.speed = CFG.baseSpeed; game.invincible = CFG.invincibleTime;
+    game.speed = CFG.baseSpeed * st.speed; game.invincible = CFG.invincibleTime;
     game.distance = respawnDist; game.laneX = respawnLane;   // rewind to ~2s ago
     camera.position.set(game.laneX * 0.6, 4.2, -game.distance + 8); // snap camera to rewound spot
     history.length = 0;
@@ -289,7 +291,7 @@ function createWorld(bodyColor) {
 
   function update(dt, input) {
     if (game.state === STATE.RIDING && !game.frozen) {
-      game.laneX += (input.steer || 0) * CFG.steerSpeed * dt;
+      game.laneX += (input.steer || 0) * CFG.steerSpeed * st.turn * dt;
       const lim = CFG.roadWidth / 2 - 0.6;
       game.laneX = Math.max(-lim, Math.min(lim, game.laneX));
 
@@ -297,10 +299,10 @@ function createWorld(bodyColor) {
       if (w > 0) game.pitch += CFG.pitchRiseRate * w * dt;
       else game.pitch += CFG.pitchFallRate * w * dt;   // w<=0 lowers front wheel (∝ |w|)
       game.pitch = Math.max(0, game.pitch);
-      if (game.pitch > CFG.maxPitch) triggerCrash();
+      if (game.pitch > CFG.maxPitch * st.maxPitch) triggerCrash();
 
-      const boost = 1 + (CFG.wheelieSpeedMul - 1) * Math.min(1, game.pitch / CFG.maxPitch);
-      const target = CFG.baseSpeed * (game.pitch > 0.05 ? boost : 1);
+      const boost = 1 + (CFG.wheelieSpeedMul * st.wheelie - 1) * Math.min(1, game.pitch / (CFG.maxPitch * st.maxPitch));
+      const target = CFG.baseSpeed * st.speed * (game.pitch > 0.05 ? boost : 1);
       game.speed += (target - game.speed) * Math.min(1, dt * CFG.wheelieAccel);
       game.distance += game.speed * dt;
 
@@ -321,8 +323,8 @@ function createWorld(bodyColor) {
         game.finishTime = (performance.now() - game.startTime) / 1000;
       }
       // high-wheelie sparks from the rear wheel contact
-      if (game.pitch > CFG.maxPitch * 0.6) {
-        const n = 1 + Math.floor((game.pitch / CFG.maxPitch) * 2);
+      if (game.pitch > CFG.maxPitch * st.maxPitch * 0.6) {
+        const n = 1 + Math.floor((game.pitch / (CFG.maxPitch * st.maxPitch)) * 2);
         for (let k = 0; k < n; k++) spawnSpark(game.laneX + (Math.random() - 0.5) * 0.4, 0.15, -game.distance + 0.1);
       }
       if (game.invincible > 0) game.invincible -= dt;
@@ -360,7 +362,7 @@ function createWorld(bodyColor) {
     }
 
     // normalized speed above base (0 = base, 1 = top wheelie speed)
-    const spF = Math.min(1, Math.max(0, (game.speed - CFG.baseSpeed) / (CFG.baseSpeed * (CFG.wheelieSpeedMul - 1))));
+    const spF = Math.min(1, Math.max(0, (game.speed - CFG.baseSpeed * st.speed) / (CFG.baseSpeed * st.speed * (CFG.wheelieSpeedMul * st.wheelie - 1))));
     game.speedFactor = spF;
 
     // camera pulls back + up with speed -> player looks smaller, more road visible
@@ -728,24 +730,24 @@ function hideFinish() { els.finishBanner.classList.remove('show'); }
 
 function tagHtml(g) {
   const t = [];
-  if (g.pitch > 0.05) t.push(`<span class="wheelie">WHEELIE ${(g.pitch / CFG.maxPitch * 100 | 0)}%</span>`);
+  if (g.pitch > 0.05) t.push(`<span class="wheelie">WHEELIE ${(g.pitch / (CFG.maxPitch * (g.st ? g.st.maxPitch : 1)) * 100 | 0)}%</span>`);
   if (g.invincible > 0) t.push(`<span class="invinc">무적</span>`);
   if (g.state === STATE.CRASHED) t.push(`<span class="crashed">CRASH!</span>`);
   return t.join(' ');
 }
 function updateHud() {
-  const warn = CFG.maxPitch * 0.7;   // near-flip threshold (~70%)
+  const warnOf = g => CFG.maxPitch * (g.st ? g.st.maxPitch : 1) * 0.7;   // near-flip threshold (~70% of the per-vehicle cap)
   const g1 = worlds[0].game;
   els.p1speed.textContent = Math.round(g1.speed * 3.0);
   els.p1fill.style.width = `${Math.min(100, g1.distance / CFG.trackLength * 100).toFixed(1)}%`;
   els.p1tags.innerHTML = tagHtml(g1);
-  els.p1warn.classList.toggle('on', g1.state === STATE.RIDING && g1.pitch > warn);
+  els.p1warn.classList.toggle('on', g1.state === STATE.RIDING && g1.pitch > warnOf(g1));
   if (gameMode === '2P') {
     const g2 = worlds[1].game;
     els.p2speed.textContent = Math.round(g2.speed * 3.0);
     els.p2fill.style.width = `${Math.min(100, g2.distance / CFG.trackLength * 100).toFixed(1)}%`;
     els.p2tags.innerHTML = tagHtml(g2);
-    els.p2warn.classList.toggle('on', g2.state === STATE.RIDING && g2.pitch > warn);
+    els.p2warn.classList.toggle('on', g2.state === STATE.RIDING && g2.pitch > warnOf(g2));
   } else {
     els.p2warn.classList.remove('on');
     if (gameMode === 'ONLINE') {
