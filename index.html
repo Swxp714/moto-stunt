@@ -81,6 +81,12 @@
       font-family: var(--font); font-size: 15px; color: #ff9a9a; letter-spacing: .06em;
       background: rgba(8,12,22,.72); padding: 6px 16px; box-shadow: 0 0 0 3px #06060c; }
     #dmSpectate.on { display: block; }
+    /* 레전드 정규전 top bar */
+    #lrBar { position: absolute; top: 14px; left: 50%; transform: translateX(-50%); display: none; z-index: 17;
+      font-family: var(--font); font-size: 13px; color: var(--ink); letter-spacing: .04em;
+      background: rgba(8,12,22,.72); padding: 6px 18px; box-shadow: 0 0 0 3px #06060c; white-space: nowrap; }
+    #lrBar.on { display: block; }
+    #lrBar b { color: var(--yellow); }
 
     .controls-help { position: absolute; bottom: 16px; left: 50%; transform: translateX(-50%);
       font-size: 11px; color: var(--dim); letter-spacing: .02em; text-align: center; }
@@ -358,6 +364,7 @@
     <div class="warn" id="dmWarn">! 경계 임박 !</div>
     <div class="banner" id="dmBanner"><div class="big" id="dmBannerBig">GAME OVER</div><div class="sub" id="dmBannerSub"></div></div>
     <div id="dmSpectate"></div>
+    <div id="lrBar"></div>
     <div id="dmStandings"><div class="title">FINAL STANDINGS</div><div id="dmStandingsRows"></div><div class="hint" id="dmStandingsHint">R 재시작</div></div>
 
     <div class="controls-help" id="helpText">← → 조향　↑ 윌리　R 리셋　1/2 인원　M 모션</div>
@@ -405,6 +412,7 @@
           <button class="mbtn" id="btnLocalPlay">LOCAL<span>한 PC 2인</span></button>
           <button class="mbtn" id="btnOnlinePlay">ONLINE<span>방 코드</span></button>
         </div>
+        <button class="mbtn" id="btnLegend" style="margin-top:8px;border-color:var(--yellow);">🏆 레전드 정규전<span>5라운드 + 결승 (개발중)</span></button>
         <button class="mbtn ghost" id="btnPlayBack">← 뒤로</button>
       </div>
     </div>

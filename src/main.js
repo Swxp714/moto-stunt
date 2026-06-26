@@ -11,6 +11,7 @@ import { Net } from './net.js';
 import { VEHICLES, mountRider } from '../models/vehicles.js';
 import { VMAP, DEFAULT_VEHICLE, VEH_EMOJI, vehEmoji, buildBike, vehStats } from './bike.js';
 import { createArenaWorld } from './deathmatch.js';
+import { createLegendMatch } from './legend.js';
 import { buildGridFloor } from './scene.js';
 import { at } from '../models/_kit.js';
 import { buildItemModel, ITEM_KEYS } from '../models/items.js';
@@ -394,6 +395,7 @@ function createWorld(bodyColor) {
 // ---------------------------------------------------------------------------
 // createArenaWorld now lives in deathmatch.js (DM world factory)
 let arenaWorld = null;
+let legend = null;   // 레전드 정규전 controller (src/legend.js)
 
 // two worlds; world[1] is only rendered/updated in 2P mode
 const worlds = [createWorld(0xff5a3c), createWorld(0x3a8bff)]; // P1 red, P2 blue
@@ -519,7 +521,9 @@ let inputSource = 'keyboard'; // 'keyboard' | 'motion'
 const tracker = new HandTracker();
 window.__moto = { CFG, STATE, worlds, get mode() { return gameMode; },
   get source() { return inputSource; }, tracker, computeControls,
-  composite: compositeMat, get arena() { return arenaWorld; }, DM, createArenaWorld };
+  composite: compositeMat, get arena() { return arenaWorld; }, DM, createArenaWorld,
+  startLegend: (o) => startLegend(o), get legend() { return legend; } };
+Object.defineProperty(window, '__legend', { get() { return legend; } });
 
 const keys = new Set();
 const GAME_KEYS = new Set(['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Space',
@@ -620,6 +624,7 @@ const els = {
   dmStandings: document.getElementById('dmStandings'), dmStandingsRows: document.getElementById('dmStandingsRows'),
   dmSpectate: document.getElementById('dmSpectate'),
   dmStandingsHint: document.getElementById('dmStandingsHint'),
+  lrBar: document.getElementById('lrBar'),
   modeTagVal: document.getElementById('modeTagVal'),
   finishBanner: document.getElementById('finishBanner'), finishBig: document.getElementById('finishBig'), finishSub: document.getElementById('finishSub'),
   hud: document.getElementById('hud'),
@@ -717,6 +722,43 @@ function showDmStandings(aw, mySlot, winner, showHint) {
   els.dmStandings.classList.add('show');
 }
 function hideDmStandings() { els.dmStandings.classList.remove('show'); }
+// --- 레전드 정규전 (Legend Ranked) ---
+function startLegend(opts = {}) {
+  teardownOnline();
+  if (legend) legend.dispose();
+  legend = createLegendMatch({ scorePop, ...opts });
+  arenaWorld = legend.world;
+  gameMode = 'LEGEND';
+  closeMenu();
+  hud.classList.remove('split', 'online', 'mhidden'); hud.classList.add('dm');
+  camWrap.classList.remove('split');
+  updateModeTag(); sizeTargets();
+}
+function showLegendStandings() {
+  const st = legend.standings();
+  els.dmStandingsRows.innerHTML = st.map((p, i) => {
+    const col = '#' + (legend.defs[p.idx].color >>> 0).toString(16).padStart(6, '0');
+    const win = i === 0 && legend.phase === 'results';
+    return `<div class="srow${win ? ' win' : ''}"><span class="rk">${win ? '👑' : i + 1}</span>` +
+      `<span class="nm" style="color:${col}">${p.idx === legend.localSlot ? '나' : p.name}</span>` +
+      `<span class="sc">${p.pts}</span></div>`;
+  }).join('');
+  els.dmStandingsHint.style.display = legend.phase === 'results' ? '' : 'none';
+  if (legend.phase === 'results') els.dmStandingsHint.textContent = 'SPACE 다시하기 · ESC 메뉴';
+  els.dmStandings.classList.add('show');
+}
+function updateLegendHud() {
+  if (!legend) return;
+  const me = legend.players.find(p => p.idx === legend.localSlot);
+  if (legend.phase === 'dm') {
+    els.lrBar.classList.add('on');
+    els.lrBar.innerHTML = `라운드 <b>${Math.min(legend.round + 1, legend.totalRounds)}</b>/${legend.totalRounds} · 점수 <b>${me ? me.pts : 0}</b> · 순위 <b>#${legend.myRank()}</b>`;
+    hideDmStandings();
+  } else if (legend.phase === 'intermission' || legend.phase === 'results') {
+    els.lrBar.classList.add('on'); els.lrBar.textContent = legend.banner;
+    showLegendStandings();
+  } else els.lrBar.classList.remove('on');
+}
 let popTimer = 0;
 function scorePop(text, kind) {   // floating +2 / -1 feedback for the local player
   const el = document.createElement('div');
@@ -1285,6 +1327,17 @@ $('btnPlayBack').onclick = () => showScreen('main');
 $('btnSolo').onclick = () => openSetup('solo');
 $('btnLocalPlay').onclick = () => openSetup('local');
 $('btnOnlinePlay').onclick = () => openSetup('online');
+$('btnLegend').onclick = async () => {
+  const picks = await openKartSelect({ count: 1, title: '레전드 정규전 — 바이크 선택', noCountdown: true });
+  if (!picks || !picks[0]) { showScreen('play'); return; }
+  startLegend({ humanVehicle: picks[0].vehicle, humanColor: picks[0].color });
+};
+// legend results: SPACE = 다시하기, ESC = 메뉴
+addEventListener('keydown', (e) => {
+  if (gameMode !== 'LEGEND' || !legend || legend.phase !== 'results') return;
+  if (e.code === 'Space') { legend.dispose(); legend = null; gameMode = '1P'; $('btnLegend').click(); }
+  else if (e.code === 'Escape') { legend.dispose(); legend = null; gameMode = '1P'; els.lrBar.classList.remove('on'); hideDmStandings(); openMenu(); }
+});
 $('btnSetupBack').onclick = () => showScreen('play');
 function openSetup(kind) { setup.kind = kind; showScreen('setup'); renderSetup(); }
 function renderSetup() {
@@ -1507,6 +1560,37 @@ function loop() {
     renderer.setScissorTest(false);
     renderer.setRenderTarget(rts[0]); renderer.clear(); renderer.render(arenaWorld.scene, victory ? arenaWorld.winCam : viewCam);
     if (two) { renderer.setRenderTarget(rts[1]); renderer.clear(); renderer.render(arenaWorld.scene, victory ? arenaWorld.winCam : arenaWorld.cameras[1]); }
+    renderer.setRenderTarget(null); renderer.clear(); renderer.render(quadScene, quadCam);
+    renderMiniViews();
+    drawCamOverlay();
+    requestAnimationFrame(loop);
+    return;
+  }
+
+  // ---- 레전드 정규전 branch (reuses the DM render; legend owns round flow + scoring) ----
+  if (gameMode === 'LEGEND' && legend) {
+    arenaWorld = legend.world;                       // so the DM HUD/mini-view fns use the live round world
+    legend.tick(dt, [inputFor(0)]);
+    arenaWorld = legend.world;                       // tick may have rebuilt the world on a round change
+    const dst = arenaWorld.S, mySlot = legend.localSlot;
+    updateDmHud(arenaWorld, mySlot);
+    updateLegendHud();
+    els.dmWarn.classList.toggle('on', legend.phase === 'dm' && !!dst.nearEdge);
+    const r0 = arenaWorld.riders[mySlot];
+    if (engineOn) sfx.engineSet(r0.alive ? r0.speed / (DM.moveSpeed * 2.4) : 0.18);
+    compositeMat.uniforms.uSpeedL.value = Math.min(1, Math.max(0, (r0.speed - DM.moveSpeed) / (DM.moveSpeed * (DM.wheelieMul - 1))));
+    compositeMat.uniforms.uSpeedR.value = 0;
+    compositeMat.uniforms.uFlashL.value.set(1, 1, 1, 0); compositeMat.uniforms.uFlashR.value.set(1, 1, 1, 0);
+    const showWin = legend.phase === 'results' && dst.winner >= 0;
+    let viewCam = arenaWorld.cameras[mySlot];
+    const eliminated = r0 && !r0.alive && r0.lives <= 0 && !r0.startDead && (r0.respawnT || 0) <= 0;
+    if (eliminated && !showWin) {
+      const spec = arenaWorld.riders.find(r => r.alive && !r.startDead && r.idx !== mySlot);
+      if (spec) { viewCam = arenaWorld.cameras[spec.idx]; const a = innerWidth / innerHeight; viewCam.fov = Math.min(fovForAspect(60, a), CFG.maxVFov); viewCam.aspect = a; viewCam.updateProjectionMatrix(); }
+      els.dmSpectate.textContent = spec ? '💀 관전 중 · P' + (spec.idx + 1) : '💀 탈락'; els.dmSpectate.classList.add('on');
+    } else els.dmSpectate.classList.remove('on');
+    renderer.setScissorTest(false);
+    renderer.setRenderTarget(rts[0]); renderer.clear(); renderer.render(arenaWorld.scene, showWin ? arenaWorld.winCam : viewCam);
     renderer.setRenderTarget(null); renderer.clear(); renderer.render(quadScene, quadCam);
     renderMiniViews();
     drawCamOverlay();

@@ -48,3 +48,18 @@ export const DM_MODES = {
 export const ITEM_ICON = { jump: '⤴️', boost: '💨', shield: '🛡️', super: '🔥' };
 export const HERO_COLORS = [0xe8842a, 0xe14b4b, 0x4b86e1, 0x49b96a, 0x9b59d0, 0xf2c53d];
 export const DM_COLORS = [0xff5a3c, 0x3a8bff, 0x49d17a, 0xffd54a, 0xff5ad1, 0x5ad1ff, 0xff9a3a, 0xb06aff];
+
+// --- 레전드 정규전 (Legend Ranked) — see docs/LEGEND_MODE.md ---
+export const LEGEND = {
+  dmRounds: 5, dmModeKey: 'lives', dmRoundTime: 150, dmSuddenDeathAt: 120,
+  intermissionTime: 4.5, fieldSize: 6,   // supports 2..8 (roster padded with bots)
+};
+// shipping 6p point curves; legendTable() generates for any N (sum of 5 DM-1sts ≈ race-1st ≈ 500)
+export const DM_PTS   = [100, 72, 50, 33, 20, 10];
+export const RACE_PTS = [500, 330, 220, 140, 80, 30];
+export function legendTable(n, kind) {
+  const fixed = kind === 'race' ? RACE_PTS : DM_PTS;
+  if (n <= fixed.length) return fixed.slice(0, n);
+  const top = kind === 'race' ? 500 : 100, decay = kind === 'race' ? 0.66 : 0.62;
+  return Array.from({ length: n }, (_, i) => Math.round(top * Math.pow(decay, i)));
+}
