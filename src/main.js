@@ -9,6 +9,7 @@ import { HandTracker, computeControls } from './hands.js';
 import { makeBayerTexture } from './pixelart.js';
 import { Net } from './net.js';
 import { VEHICLES, mountRider } from '../models/vehicles.js';
+import { VMAP, DEFAULT_VEHICLE, VEH_EMOJI, vehEmoji, buildBike } from './bike.js';
 import { at } from '../models/_kit.js';
 import { buildItemModel, ITEM_KEYS } from '../models/items.js';
 import { openKartSelect } from './kartselect.js';
@@ -18,12 +19,7 @@ addEventListener('click', (e) => {
   if (e.target.closest('.mbtn, .seg, .ks-chip, .ks-sw div, .side-box, .pcard, .chip, .sw')) sfx.play('ui_click');
 }, true);
 
-// soft/angular 3D vehicle models keyed for in-game use
-const VMAP = Object.fromEntries(VEHICLES.map(v => [v.key, v]));
-const DEFAULT_VEHICLE = 'dirtbike';
-// emoji icons for lobby slot cards (kart unknown until chosen -> generic 🛵)
-const VEH_EMOJI = { scooter: '🛵', dirtbike: '🏍️', sportbike: '🏎️', wheelbarrow: '🛒' };
-function vehEmoji(key) { return VEH_EMOJI[key] || '🛵'; }
+// vehicle/bike builders (VMAP/DEFAULT_VEHICLE/VEH_EMOJI/buildBike) now live in bike.js
 // build one pixel slot card; empty slot -> dimmed 대기중
 function makeSlot(opts) {
   const c = document.createElement('div');
@@ -40,15 +36,6 @@ function makeSlot(opts) {
   return c;
 }
 // build a vehicle model oriented for the game (forward = -Z) with a rider mounted
-function buildVehicleModel(key, bodyColor, riderColor) {
-  const v = VMAP[key] || VMAP[DEFAULT_VEHICLE];
-  const inner = v.build(bodyColor);
-  if (v.seat) mountRider(inner, v.seat, riderColor != null ? riderColor : 0xf4ead6);
-  inner.rotation.y = Math.PI / 2;        // model faces +X -> rotate so forward is -Z
-  inner.scale.setScalar(1.4);            // size up for the in-game camera
-  return inner;
-}
-
 // Tuning (CFG/STATE/DM/DM_MODES/palettes) now live in config.js — see docs/ARCHITECTURE.md
 
 // ---------------------------------------------------------------------------
@@ -110,16 +97,7 @@ function buildRoad() {
 
 // Builds the selected soft/angular 3D vehicle as a game bike pivot.
 //   bodyColor: vehicle body tint;  opts: { vehicle: key, rider: riderColor }
-function buildBike(bodyColor, opts = {}) {
-  const pivot = new THREE.Group();
-  pivot.rotation.order = 'YXZ';   // yaw (steer) -> pitch (wheelie) -> roll (lean)
-  const inner = buildVehicleModel(opts.vehicle || DEFAULT_VEHICLE, bodyColor, opts.rider);
-  pivot.add(inner);
-  // collect wheel groups so the game can spin them (about their local Z axle)
-  pivot.userData.wheels = [];
-  inner.traverse(o => { if (o.userData && o.userData.isWheel) pivot.userData.wheels.push(o); });
-  return pivot;
-}
+// buildBike now lives in bike.js
 
 function buildObstacles(scene) {
   const obstacles = [];
