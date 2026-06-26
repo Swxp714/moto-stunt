@@ -561,7 +561,11 @@ function createArenaWorld(riderDefs, modeKey = 'score') {
   function emitTrail(r) {
     if (r.invuln > 0) { r.trailInit = false; return; }   // no tail while post-respawn invincible; resume fresh when it ends
     if (!r.trailInit) { r.lastTX = r.x; r.lastTZ = r.z; r.trailInit = true; return; }
-    if (Math.hypot(r.x - r.lastTX, r.z - r.lastTZ) >= DM.trailGap) { addSeg(r, r.lastTX, r.lastTZ, r.x, r.z, r.y || 0); r.lastTX = r.x; r.lastTZ = r.z; }
+    const d = Math.hypot(r.x - r.lastTX, r.z - r.lastTZ);
+    if (d >= DM.trailGap) {
+      if (d <= DM.trailGap * 4) addSeg(r, r.lastTX, r.lastTZ, r.x, r.z, r.y || 0);   // skip an over-long bridge (teleport / frame hitch / jump arc)
+      r.lastTX = r.x; r.lastTZ = r.z;
+    }
   }
   let paused = false;
   function setPaused(p) { paused = p; }
@@ -859,7 +863,10 @@ function createArenaWorld(riderDefs, modeKey = 'score') {
     }
     S.time += dt;
     if (mode.timer > 0) S.timeLeft = Math.max(0, S.timeLeft - dt);          // score mode counts down
-    if (mode.shrink) { arena.radius = Math.max(DM.minR, arena.radius - DM.shrinkRate * dt); ring.scale.setScalar(arena.radius / DM.arenaR); }
+    if (mode.shrink) {
+      arena.radius = Math.max(DM.minR, arena.radius - DM.shrinkRate * dt); ring.scale.setScalar(arena.radius / DM.arenaR);
+      for (const p of PADS) if (Math.hypot(p.x, p.z) > arena.radius) relocatePad(p);   // pads that fall outside the shrinking ring hop back in (placed at <=0.9R so no per-frame jitter)
+    }
     if (S.itemT != null) { S.itemT -= dt; if (S.itemT <= 0) { S.itemT = DM.itemInterval; grantItems(); } }
     for (const r of riders) {
       if (!r.alive) {   // downed -> count down to respawn (no elimination)
@@ -2064,7 +2071,11 @@ function loop() {
     const eliminated = r0 && !r0.alive && r0.lives <= 0 && !r0.startDead && (r0.respawnT || 0) <= 0;
     if (eliminated && !victory) {
       const spec = arenaWorld.riders.find(r => r.alive && !r.startDead && r.idx !== mySlot);
-      if (spec) viewCam = arenaWorld.cameras[spec.idx];
+      if (spec) {   // restore full-screen projection (renderMiniViews leaves opponent cams at the mini fov/aspect)
+        viewCam = arenaWorld.cameras[spec.idx];
+        const a = innerWidth / innerHeight;
+        viewCam.fov = Math.min(fovForAspect(60, a), CFG.maxVFov); viewCam.aspect = a; viewCam.updateProjectionMatrix();
+      }
       els.dmSpectate.textContent = spec ? '💀 관전 중 · P' + (spec.idx + 1) : '💀 탈락';
       els.dmSpectate.classList.add('on');
     } else els.dmSpectate.classList.remove('on');
