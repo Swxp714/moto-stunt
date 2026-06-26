@@ -8,6 +8,11 @@ import { at } from '../models/_kit.js';
 import { buildGridFloor } from './scene.js';
 import sfx from './sfx.js';
 
+// resolved augment mods (레전드 정규전). The controller passes def.aug already resolved
+// (resolveMods in models/augments.js); deathmatch.js stays decoupled. No augments -> NO_AUG (identity).
+const NO_AUG = { speedMul: 1, turnMul: 1, wheelieMul: 1, maxPitchMul: 1, trailMul: 1,
+  boostDurAdd: 0, shieldDurAdd: 0, invulnAdd: 0, killEveryDelta: 0, deathEveryDelta: 0, startItem: null };
+
 export function createArenaWorld(riderDefs, modeKey = 'score', scorePop = () => {}) {
   const mode = DM_MODES[modeKey] || DM_MODES.score;
   const scene = new THREE.Scene();
@@ -64,6 +69,7 @@ export function createArenaWorld(riderDefs, modeKey = 'score', scorePop = () => 
   // --- riders ---
   function makeRider(def, idx) {
     const st = vehStats(def.vehicle);   // per-vehicle stat multipliers (see VEHICLE_DESIGN.md)
+    const aug = def.aug || NO_AUG;       // resolved 레전드 증강 mods (controller-injected)
     const bike = buildBike(def.color, { vehicle: def.vehicle }); scene.add(bike);
     bike.rotation.order = 'YXZ';   // yaw (heading) then pitch (wheelie)
     // item VFX (children of the bike): shield bubble + boost flame, toggled in positionAll
@@ -80,8 +86,8 @@ export function createArenaWorld(riderDefs, modeKey = 'score', scorePop = () => 
     for (let kk = 0; kk < 5; kk++) { const a = kk / 5 * Math.PI * 2; const sp = new THREE.Mesh(new THREE.ConeGeometry(0.12, 0.34, 6), goldMat); sp.position.set(Math.cos(a) * 0.46, 0.28, Math.sin(a) * 0.46); crown.add(sp); }
     crown.position.y = 3.5; crown.visible = false; bike.add(crown);
     return { idx, isBot: !!def.isBot, remote: !!def.remote, startDead: !!def.dead, name: def.name, color: def.color, bike, bubble, flame, crown,
-      st, trailCap: Math.round(DM.trailMax * st.trail),                 // per-vehicle stats + tail cap
-      killEvery: Math.max(1, Math.round(3 / st.item)), deathEvery: Math.max(1, Math.round(2 / st.item)),  // item cadence
+      st, aug, trailCap: Math.round(DM.trailMax * st.trail * aug.trailMul),   // per-vehicle stats + augments + tail cap
+      killEvery: Math.max(1, Math.round(3 / st.item) + aug.killEveryDelta), deathEvery: Math.max(1, Math.round(2 / st.item) + aug.deathEveryDelta),  // item cadence
       trailMat: new THREE.MeshBasicMaterial({ color: def.color }), trailSegs: [], trailMeshes: [],
       x: 0, z: 0, heading: 0, pitch: 0, speed: DM.moveSpeed * st.speed, alive: true, lastTX: 0, lastTZ: 0, trailInit: false,
       air: 0, y: 0, head: 0, airFlag: false,   // jump timer / height / head-look / remote airborne
@@ -184,7 +190,7 @@ export function createArenaWorld(riderDefs, modeKey = 'score', scorePop = () => 
       let dh = ((wantH - r.heading + Math.PI * 3) % (Math.PI * 2)) - Math.PI;   // signed turn, [-π,π]
       pursueSteer = Math.max(-1, Math.min(1, dh * 1.6));
       // wheelie burst to close distance when far + the lane ahead is clear (and not about to flip)
-      wantWheelie = tdist > 24 && fwdClear >= 12 && r.pitch < CFG.maxPitch * r.st.maxPitch * 0.78;
+      wantWheelie = tdist > 24 && fwdClear >= 12 && r.pitch < CFG.maxPitch * r.st.maxPitch * r.aug.maxPitchMul * 0.78;
     }
 
     // 3) BLEND: pursue when the road ahead is open; let avoidance take over as danger closes in
@@ -194,7 +200,7 @@ export function createArenaWorld(riderDefs, modeKey = 'score', scorePop = () => 
     if (fwdClear <= 4) steer = safeSteer;                            // imminent collision: pure escape
 
     // 4) WHEELIE control (bots manage their own pitch; never flip — respect maxPitch)
-    const flipGuard = CFG.maxPitch * r.st.maxPitch * 0.82;
+    const flipGuard = CFG.maxPitch * r.st.maxPitch * r.aug.maxPitchMul * 0.82;
     if (wantWheelie && danger < 0.3) {
       r.pitch = Math.min(flipGuard, r.pitch + CFG.pitchRiseRate * 0.7 * dt);
     } else {
@@ -299,7 +305,7 @@ export function createArenaWorld(riderDefs, modeKey = 'score', scorePop = () => 
       r.x = Math.sin(a) * sr; r.z = Math.cos(a) * sr; r.heading = (n > 1 ? Math.PI / 2 - a : 0); // tangent (circle), single=forward
       r.alive = !r.startDead; r.speed = DM.moveSpeed * r.st.speed; r.trailInit = false; r.bike.visible = !r.startDead;
       r.pitch = 0; r.air = 0; r.y = 0; r.head = 0; r.bike.rotation.x = 0;
-      r.score = 0; r.respawnT = 0; r.invuln = 0; r.item = null; r.boost = 0; r.shield = 0;
+      r.score = 0; r.respawnT = 0; r.invuln = 0; r.item = r.aug.startItem; r.boost = 0; r.shield = 0;
       r.kills = 0; r.deaths = 0; r.rsX = null;
       r.lives = mode.maxLives === 0 ? Infinity : mode.maxLives;
       clearRiderTrail(r);
@@ -319,7 +325,7 @@ export function createArenaWorld(riderDefs, modeKey = 'score', scorePop = () => 
     if (r.rsX != null) { r.x = r.rsX; r.z = r.rsZ; r.heading = r.rsH; r.rsX = null; }   // camera already panned here
     else { const s = pickRespawn(r); r.x = s.x; r.z = s.z; r.heading = s.h; }
     r.alive = true; r.bike.visible = true; r.speed = DM.moveSpeed * r.st.speed; r.pitch = 0; r.air = 0; r.y = 0;
-    r.trailInit = false; r.invuln = DM.invulnTime; r.boost = 0; r.shield = 0;
+    r.trailInit = false; r.invuln = DM.invulnTime + r.aug.invulnAdd; r.boost = 0; r.shield = 0;
     if (r.idx === 0) sfx.play('respawn');
   }
   // hand each living rider a rank-based item (leaders weak, trailing strong)
@@ -344,9 +350,9 @@ export function createArenaWorld(riderDefs, modeKey = 'score', scorePop = () => 
   function useItem(idx) {
     const r = riders[idx]; if (!r || !r.alive || !r.item) return;
     if (r.item === 'jump') r.air = DM.jumpTime;
-    else if (r.item === 'boost') r.boost = 2.2;
-    else if (r.item === 'shield') r.shield = 3.0;
-    else if (r.item === 'super') { r.shield = 4.0; r.boost = 4.0; }
+    else if (r.item === 'boost') r.boost = 2.2 + r.aug.boostDurAdd;
+    else if (r.item === 'shield') r.shield = 3.0 + r.aug.shieldDurAdd;
+    else if (r.item === 'super') { r.shield = 4.0 + r.aug.shieldDurAdd; r.boost = 4.0 + r.aug.boostDurAdd; }
     r.item = null;
   }
   // death = score -1, killer +2; respawn if the rider still has lives (mode-dependent)
@@ -456,10 +462,10 @@ export function createArenaWorld(riderDefs, modeKey = 'score', scorePop = () => 
       if (!r.isBot) {   // wheelie: hold to lift front wheel & boost speed; too high = flip (but safe mid-air)
         const w = inp.wheelie || 0;
         r.pitch = Math.max(0, r.pitch + (w > 0 ? CFG.pitchRiseRate * w : CFG.pitchFallRate * w) * dt);
-        if (r.pitch > CFG.maxPitch * r.st.maxPitch && !airborne) { dead = true; cause = '윌리 전복'; }
+        if (r.pitch > CFG.maxPitch * r.st.maxPitch * r.aug.maxPitchMul && !airborne) { dead = true; cause = '윌리 전복'; }
       }
-      r.speed = DM.moveSpeed * r.st.speed * (1 + (DM.wheelieMul * r.st.wheelie - 1) * Math.min(1, r.pitch / (CFG.maxPitch * r.st.maxPitch))) * (r.boost > 0 ? 1.6 : 1);
-      r.heading += steer * DM.turnRate * r.st.turn * dt;
+      r.speed = DM.moveSpeed * r.st.speed * r.aug.speedMul * (1 + (DM.wheelieMul * r.st.wheelie * r.aug.wheelieMul - 1) * Math.min(1, r.pitch / (CFG.maxPitch * r.st.maxPitch * r.aug.maxPitchMul))) * (r.boost > 0 ? 1.6 : 1);
+      r.heading += steer * DM.turnRate * r.st.turn * r.aug.turnMul * dt;
       const fx = Math.sin(r.heading), fz = -Math.cos(r.heading);
       r.x += fx * r.speed * dt; r.z += fz * r.speed * dt;
 
@@ -500,7 +506,7 @@ export function createArenaWorld(riderDefs, modeKey = 'score', scorePop = () => 
     S.alive = riders[0].alive;
     S.nearEdge = riders[0].alive && Math.hypot(riders[0].x, riders[0].z) > arena.radius * 0.82;
 
-    for (const r of riders) if (r.alive && r.air <= 0 && r.pitch > CFG.maxPitch * r.st.maxPitch * 0.22) {   // no sparks while airborne (no ground contact)
+    for (const r of riders) if (r.alive && r.air <= 0 && r.pitch > CFG.maxPitch * r.st.maxPitch * r.aug.maxPitchMul * 0.22) {   // no sparks while airborne (no ground contact)
       const sfx2 = Math.sin(r.heading), sfz2 = -Math.cos(r.heading);   // spew sparks from the rear wheel
       for (let s = 0; s < 4; s++) spawnSpark(r.x - sfx2 * 1.3 + (Math.random() - 0.5) * 0.7, 0.3, r.z - sfz2 * 1.3 + (Math.random() - 0.5) * 0.7);
     }

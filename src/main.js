@@ -4,7 +4,7 @@
 //   Phase 3:   local 2-player split-screen (independent worlds, low-res RT composite)
 // SSOT: docs/GAMEPLAN.md
 import * as THREE from 'three';
-import { CFG, STATE, DM, DM_MODES, ITEM_ICON, HERO_COLORS, DM_COLORS } from './config.js';
+import { CFG, STATE, DM, DM_MODES, ITEM_ICON, HERO_COLORS, DM_COLORS, LEGEND } from './config.js';
 import { HandTracker, computeControls } from './hands.js';
 import { makeBayerTexture } from './pixelart.js';
 import { Net } from './net.js';
@@ -12,6 +12,8 @@ import { VEHICLES, mountRider } from '../models/vehicles.js';
 import { VMAP, DEFAULT_VEHICLE, VEH_EMOJI, vehEmoji, buildBike, vehStats } from './bike.js';
 import { createArenaWorld } from './deathmatch.js';
 import { createLegendMatch } from './legend.js';
+import { openAugmentSelect } from './augmentselect.js';
+import { AUG_MAP } from '../models/augments.js';
 import { buildGridFloor } from './scene.js';
 import { at } from '../models/_kit.js';
 import { buildItemModel, ITEM_KEYS } from '../models/items.js';
@@ -522,7 +524,7 @@ const tracker = new HandTracker();
 window.__moto = { CFG, STATE, worlds, get mode() { return gameMode; },
   get source() { return inputSource; }, tracker, computeControls,
   composite: compositeMat, get arena() { return arenaWorld; }, DM, createArenaWorld,
-  startLegend: (o) => startLegend(o), get legend() { return legend; } };
+  startLegend: (o) => startLegend(o), get legend() { return legend; }, createLegendMatch };
 Object.defineProperty(window, '__legend', { get() { return legend; } });
 
 const keys = new Set();
@@ -723,16 +725,20 @@ function showDmStandings(aw, mySlot, winner, showHint) {
 }
 function hideDmStandings() { els.dmStandings.classList.remove('show'); }
 // --- 레전드 정규전 (Legend Ranked) ---
-function startLegend(opts = {}) {
+async function startLegend(opts = {}) {
   teardownOnline();
   if (legend) legend.dispose();
-  legend = createLegendMatch({ scorePop, ...opts });
-  arenaWorld = legend.world;
+  // human augment pick -> the 3-card overlay; resolves the chosen augment id
+  const openAugment = (pickIndex, options, vehicle) =>
+    openAugmentSelect({ options, pickIndex, totalPicks: LEGEND.dmRounds + 1, vehicle: vehEmoji(vehicle) });
+  legend = createLegendMatch({ scorePop, openAugment, ...opts });
   gameMode = 'LEGEND';
   closeMenu();
   hud.classList.remove('split', 'online', 'mhidden'); hud.classList.add('dm');
   camWrap.classList.remove('split');
   updateModeTag(); sizeTargets();
+  await legend.start();          // opening augment pick (UI) -> builds round 0
+  arenaWorld = legend.world;
 }
 function showLegendStandings() {
   const st = legend.standings();
@@ -752,7 +758,8 @@ function updateLegendHud() {
   const me = legend.players.find(p => p.idx === legend.localSlot);
   if (legend.phase === 'dm') {
     els.lrBar.classList.add('on');
-    els.lrBar.innerHTML = `라운드 <b>${Math.min(legend.round + 1, legend.totalRounds)}</b>/${legend.totalRounds} · 점수 <b>${me ? me.pts : 0}</b> · 순위 <b>#${legend.myRank()}</b>`;
+    const augs = legend.myAugments().map(id => AUG_MAP[id] ? AUG_MAP[id].icon : '').join('');
+    els.lrBar.innerHTML = `라운드 <b>${Math.min(legend.round + 1, legend.totalRounds)}</b>/${legend.totalRounds} · 점수 <b>${me ? me.pts : 0}</b> · 순위 <b>#${legend.myRank()}</b>${augs ? ` · ${augs}` : ''}`;
     hideDmStandings();
   } else if (legend.phase === 'intermission' || legend.phase === 'results') {
     els.lrBar.classList.add('on'); els.lrBar.textContent = legend.banner;
@@ -1569,9 +1576,10 @@ function loop() {
 
   // ---- 레전드 정규전 branch (reuses the DM render; legend owns round flow + scoring) ----
   if (gameMode === 'LEGEND' && legend) {
-    arenaWorld = legend.world;                       // so the DM HUD/mini-view fns use the live round world
     legend.tick(dt, [inputFor(0)]);
-    arenaWorld = legend.world;                       // tick may have rebuilt the world on a round change
+    // AUGMENT phase (or before round 0 builds): the 3-card overlay is up — nothing to render behind it
+    if (legend.phase === 'augment' || !legend.world) { updateLegendHud(); requestAnimationFrame(loop); return; }
+    arenaWorld = legend.world;                        // the live round world (tick may have rebuilt it)
     const dst = arenaWorld.S, mySlot = legend.localSlot;
     updateDmHud(arenaWorld, mySlot);
     updateLegendHud();
