@@ -477,23 +477,33 @@ function createArenaWorld(riderDefs, modeKey = 'score') {
   // jump pads (점프대): random positions, re-rolled each game via placePads()
   const PADS = [];
   const padMeshes = [];
+  function padSpot(R, exclude) {   // a random non-overlapping spot, off the very edge
+    let px = 0, pz = 0;
+    for (let t = 0; t < 24; t++) {
+      const a = Math.random() * Math.PI * 2, pr = (0.18 + Math.random() * 0.72) * R;
+      px = Math.cos(a) * pr; pz = Math.sin(a) * pr;
+      if (PADS.every(p => p === exclude || Math.hypot(p.x - px, p.z - pz) > DM.jumpPadR * 3)) break;
+    }
+    return { x: px, z: pz };
+  }
   function placePads() {
     for (const m of padMeshes) { scene.remove(m); m.geometry.dispose(); }
     padMeshes.length = 0; PADS.length = 0;
     const R = (mode.startR || DM.arenaR);
     for (let i = 0; i < DM.jumpPads; i++) {
-      let px = 0, pz = 0;
-      for (let t = 0; t < 20; t++) {   // spread out, keep off the very edge
-        const a = Math.random() * Math.PI * 2, pr = (0.18 + Math.random() * 0.72) * R;
-        px = Math.cos(a) * pr; pz = Math.sin(a) * pr;
-        if (PADS.every(p => Math.hypot(p.x - px, p.z - pz) > DM.jumpPadR * 3)) break;
-      }
-      PADS.push({ x: px, z: pz });
+      const s = padSpot(R, null);
       const pad = new THREE.Mesh(new THREE.CylinderGeometry(DM.jumpPadR, DM.jumpPadR, 0.4, 18), new THREE.MeshBasicMaterial({ color: 0xffd54a }));
-      pad.position.set(px, 0.2, pz); scene.add(pad); padMeshes.push(pad);
+      pad.position.set(s.x, 0.2, s.z); scene.add(pad); padMeshes.push(pad);
       const rim = new THREE.Mesh(new THREE.TorusGeometry(DM.jumpPadR, 0.22, 6, 22), new THREE.MeshBasicMaterial({ color: 0xffffff }));
-      rim.rotation.x = Math.PI / 2; rim.position.set(px, 0.45, pz); scene.add(rim); padMeshes.push(rim);
+      rim.rotation.x = Math.PI / 2; rim.position.set(s.x, 0.45, s.z); scene.add(rim); padMeshes.push(rim);
+      PADS.push({ x: s.x, z: s.z, pad, rim });
     }
+  }
+  // a pad that gets used vanishes and pops up somewhere else
+  function relocatePad(p) {
+    const R = (arena.radius || mode.startR || DM.arenaR);
+    const s = padSpot(R, p);
+    p.x = s.x; p.z = s.z; p.pad.position.set(s.x, 0.2, s.z); p.rim.position.set(s.x, 0.45, s.z);
   }
 
   const arena = { radius: mode.startR };
@@ -528,6 +538,7 @@ function createArenaWorld(riderDefs, modeKey = 'score') {
       x: 0, z: 0, heading: 0, pitch: 0, speed: DM.moveSpeed, alive: true, lastTX: 0, lastTZ: 0, trailInit: false,
       air: 0, y: 0, head: 0, airFlag: false,   // jump timer / height / head-look / remote airborne
       score: 0, lives: 0, respawnT: 0, invuln: 0, lastKiller: -1,  // score / lives / respawn / invincibility / killer
+      kills: 0, deaths: 0,                      // for item rewards (3 kills / 2 deaths)
       item: null, boost: 0, shield: 0,         // held item key / boost timer / shield (trail-immune) timer
       tx: 0, tz: 0, th: 0 };   // remote target (network)
   }
@@ -728,7 +739,7 @@ function createArenaWorld(riderDefs, modeKey = 'score') {
   function reset() {
     arena.radius = mode.startR; ring.scale.setScalar(mode.startR / DM.arenaR);
     placePads();   // random jump-pad layout each game
-    Object.assign(S, { time: 0, timeLeft: mode.timer || 0, itemT: DM.itemInterval, mode: modeKey,
+    Object.assign(S, { time: 0, timeLeft: mode.timer || 0, itemT: null, mode: modeKey,
       alive: true, nearEdge: false, over: false, winner: -1, result: '', cause: '' });
     const n = riders.length;
     riders.forEach((r, i) => {
@@ -737,18 +748,24 @@ function createArenaWorld(riderDefs, modeKey = 'score') {
       r.alive = !r.startDead; r.speed = DM.moveSpeed; r.trailInit = false; r.bike.visible = !r.startDead;
       r.pitch = 0; r.air = 0; r.y = 0; r.head = 0; r.bike.rotation.x = 0;
       r.score = 0; r.respawnT = 0; r.invuln = 0; r.item = null; r.boost = 0; r.shield = 0;
+      r.kills = 0; r.deaths = 0; r.rsX = null;
       r.lives = mode.maxLives === 0 ? Infinity : mode.maxLives;
       clearRiderTrail(r);
     });
     clearExplosion(); clearDebris(); clearFx();
   }
   // respawn a downed rider at a random spot away from trails (brief invincibility)
-  function respawnRider(r) {
+  function pickRespawn(r) {
     for (let tries = 0; tries < 30; tries++) {
       const a = Math.random() * Math.PI * 2, rad = Math.random() * arena.radius * 0.7;
       const x = Math.cos(a) * rad, z = Math.sin(a) * rad;
-      if (!blockedAt(r, x, z, 3)) { r.x = x; r.z = z; r.heading = Math.atan2(-x, -z); break; }
+      if (!blockedAt(r, x, z, 3)) return { x, z, h: Math.atan2(-x, -z) };
     }
+    return { x: 0, z: 0, h: 0 };
+  }
+  function respawnRider(r) {
+    if (r.rsX != null) { r.x = r.rsX; r.z = r.rsZ; r.heading = r.rsH; r.rsX = null; }   // camera already panned here
+    else { const s = pickRespawn(r); r.x = s.x; r.z = s.z; r.heading = s.h; }
     r.alive = true; r.bike.visible = true; r.speed = DM.moveSpeed; r.pitch = 0; r.air = 0; r.y = 0;
     r.trailInit = false; r.invuln = DM.invulnTime; r.boost = 0; r.shield = 0;
     if (r.idx === 0) sfx.play('respawn');
@@ -765,6 +782,12 @@ function createArenaWorld(riderDefs, modeKey = 'score') {
       if (r.idx === 0) sfx.play('item_grant');
     });
   }
+  // performance reward: 3 kills -> a light item, 2 deaths -> a strong (comeback) item
+  function grantItem(r, kind) {
+    if (!r || r.item) return;   // keep an unused item
+    r.item = kind === 'death' ? (Math.random() < 0.5 ? 'shield' : 'super') : (Math.random() < 0.5 ? 'jump' : 'boost');
+    if (r.idx === 0 && r.alive) sfx.play('item_grant');
+  }
   // use the held item (called for a rider by id)
   function useItem(idx) {
     const r = riders[idx]; if (!r || !r.alive || !r.item) return;
@@ -778,10 +801,16 @@ function createArenaWorld(riderDefs, modeKey = 'score') {
   function applyDeath(r, killerIdx, cause) {
     if (!r.alive) return;
     r.score -= 1;
-    if (killerIdx >= 0 && killerIdx !== r.idx && riders[killerIdx]) { riders[killerIdx].score += DM.killScore; if (killerIdx === 0) { sfx.play('kill'); setTimeout(() => sfx.play('score_up'), 90); scorePop('+' + DM.killScore, 'plus'); } }
+    r.deaths++; if (r.deaths % 2 === 0) grantItem(r, 'death');   // every 2 deaths -> a comeback item
+    if (killerIdx >= 0 && killerIdx !== r.idx && riders[killerIdx]) {
+      const k = riders[killerIdx]; k.score += DM.killScore;
+      k.kills++; if (k.kills % 3 === 0) grantItem(k, 'kill');    // every 3 kills -> a light item
+      if (killerIdx === 0) { sfx.play('kill'); setTimeout(() => sfx.play('score_up'), 90); scorePop('+' + DM.killScore, 'plus'); }
+    }
     r.alive = false; r.bike.visible = false; r.boost = 0; r.shield = 0; r.lastKiller = killerIdx;
     r.lives = Math.max(0, r.lives - 1);              // Infinity-1 = Infinity (score mode)
     r.respawnT = r.lives > 0 ? DM.respawnDelay : 0;  // 0 lives -> eliminated (no respawn)
+    if (r.lives > 0) { const s = pickRespawn(r); r.rsX = s.x; r.rsZ = s.z; r.rsH = s.h; }  // choose spot now; camera pans there during the delay
     spawnExplosion(r.x, 1.4, r.z); spawnDebris(r.x, 1.2, r.z, r.color); clearRiderTrail(r);
     if (r.idx === 0) { S.cause = cause; sfx.play('dm_death'); scorePop('-1', 'minus'); }
   }
@@ -831,7 +860,10 @@ function createArenaWorld(riderDefs, modeKey = 'score') {
     if (S.itemT != null) { S.itemT -= dt; if (S.itemT <= 0) { S.itemT = DM.itemInterval; grantItems(); } }
     for (const r of riders) {
       if (!r.alive) {   // downed -> count down to respawn (no elimination)
-        if (!r.remote && r.respawnT > 0) { r.respawnT -= dt; if (r.respawnT <= 0) respawnRider(r); }
+        if (!r.remote && r.respawnT > 0) {
+          if (r.rsX != null) { const k = Math.min(1, dt * 2.6); r.x += (r.rsX - r.x) * k; r.z += (r.rsZ - r.z) * k; r.heading = r.rsH; }  // glide (camera follows) to the respawn spot
+          r.respawnT -= dt; if (r.respawnT <= 0) respawnRider(r);
+        }
         continue;
       }
       if (r.remote) {   // network-driven: lerp to target, build trail, no local sim/collision
@@ -862,7 +894,7 @@ function createArenaWorld(riderDefs, modeKey = 'score') {
 
       // jump pad launch + airborne parabola (over trails, immune while flying)
       if (r.air > 0) r.air -= dt;
-      else for (const p of PADS) if (Math.hypot(r.x - p.x, r.z - p.z) < DM.jumpPadR) { r.air = DM.jumpTime; break; }
+      else for (const p of PADS) if (Math.hypot(r.x - p.x, r.z - p.z) < DM.jumpPadR) { r.air = DM.jumpTime; relocatePad(p); if (r.idx === 0) sfx.play('jump_launch'); break; }   // pad used -> moves elsewhere
       const airborne = r.air > 0;
       r.y = airborne ? Math.sin((1 - r.air / DM.jumpTime) * Math.PI) * DM.jumpHeight : 0;
 
@@ -881,7 +913,7 @@ function createArenaWorld(riderDefs, modeKey = 'score') {
         if (immune) { r.x *= arena.radius / distC; r.z *= arena.radius / distC; } // shielded -> bounce off the wall
         else if (!dead) { dead = true; cause = '경계 이탈'; }
       }
-      if (!airborne) emitTrail(r);                 // no trail while flying (gap)
+      emitTrail(r);                                // tail keeps following even mid-air
       if (!dead && !airborne && !immune) for (const rr of riders) {   // can't hit trails mid-air / while shielded
         const skip = (rr === r) ? DM.graceSegs : 0;
         for (let i = 0; i < rr.trailSegs.length - skip; i++) if (distToSeg(r.x, r.z, rr.trailSegs[i]) < DM.trailW) { dead = true; cause = (rr === r) ? '트레일 충돌' : '상대 트레일'; if (rr !== r) killer = rr.idx; break; }
@@ -908,7 +940,7 @@ function createArenaWorld(riderDefs, modeKey = 'score') {
     S.alive = riders[0].alive;
     S.nearEdge = riders[0].alive && Math.hypot(riders[0].x, riders[0].z) > arena.radius * 0.82;
 
-    for (const r of riders) if (r.alive && r.pitch > CFG.maxPitch * 0.22) {
+    for (const r of riders) if (r.alive && r.air <= 0 && r.pitch > CFG.maxPitch * 0.22) {   // no sparks while airborne (no ground contact)
       const sfx2 = Math.sin(r.heading), sfz2 = -Math.cos(r.heading);   // spew sparks from the rear wheel
       for (let s = 0; s < 4; s++) spawnSpark(r.x - sfx2 * 1.3 + (Math.random() - 0.5) * 0.7, 0.3, r.z - sfz2 * 1.3 + (Math.random() - 0.5) * 0.7);
     }
