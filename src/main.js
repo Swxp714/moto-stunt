@@ -66,6 +66,9 @@ const CFG = {
   dotMin: 2, dotMax: 5,    // clamp screen-px per dot (min readable .. max chunky)
   aspectRef: 1.7778,       // 16:9 — below this, hold horizontal FOV constant (no UI clipping)
   maxVFov: 75,             // cap GAME-camera vertical FOV so narrow/split aspects don't fisheye
+  // webcam (motion) control feel — gentler + finer near center so small hand moves = small input
+  motionSteer: 0.82, motionSteerCurve: 1.5,
+  motionWheelie: 0.85, motionWheelieCurve: 1.3,
   colorSteps: 6, dither: 0.65,  // pixel-art grade — softened so bike shapes read clearly
 };
 const STATE = { RIDING: 'riding', CRASHED: 'crashed', FINISHED: 'finished' };
@@ -545,20 +548,20 @@ function createArenaWorld(riderDefs, modeKey = 'score') {
   const riders = riderDefs.map((d, i) => makeRider(d, i));
   const cameras = riders.map(() => new THREE.PerspectiveCamera(60, 1, 0.1, 1000));
 
-  function addSeg(r, x1, z1, x2, z2) {
+  function addSeg(r, x1, z1, x2, z2, y0 = 0) {
     const dx = x2 - x1, dz = z2 - z1, len = Math.hypot(dx, dz);
     if (len < 0.01) return;
     const mesh = new THREE.Mesh(new THREE.BoxGeometry(0.25, DM.trailH, len), r.trailMat);
-    mesh.position.set((x1 + x2) / 2, DM.trailH / 2, (z1 + z2) / 2);
+    mesh.position.set((x1 + x2) / 2, y0 + DM.trailH / 2, (z1 + z2) / 2);   // y0>0 = floating wall (laid mid-jump) you can pass under
     mesh.rotation.y = Math.atan2(dx, dz);
-    scene.add(mesh); r.trailSegs.push({ x1, z1, x2, z2 }); r.trailMeshes.push(mesh);
+    scene.add(mesh); r.trailSegs.push({ x1, z1, x2, z2, y0 }); r.trailMeshes.push(mesh);
     if (r.trailSegs.length > DM.trailMax) { const old = r.trailMeshes.shift(); scene.remove(old); old.geometry.dispose(); r.trailSegs.shift(); }
   }
   function clearRiderTrail(r) { for (const m of r.trailMeshes) { scene.remove(m); m.geometry.dispose(); } r.trailMeshes.length = 0; r.trailSegs.length = 0; r.trailInit = false; }
   function emitTrail(r) {
     if (r.invuln > 0) { r.trailInit = false; return; }   // no tail while post-respawn invincible; resume fresh when it ends
     if (!r.trailInit) { r.lastTX = r.x; r.lastTZ = r.z; r.trailInit = true; return; }
-    if (Math.hypot(r.x - r.lastTX, r.z - r.lastTZ) >= DM.trailGap) { addSeg(r, r.lastTX, r.lastTZ, r.x, r.z); r.lastTX = r.x; r.lastTZ = r.z; }
+    if (Math.hypot(r.x - r.lastTX, r.z - r.lastTZ) >= DM.trailGap) { addSeg(r, r.lastTX, r.lastTZ, r.x, r.z, r.y || 0); r.lastTX = r.x; r.lastTZ = r.z; }
   }
   let paused = false;
   function setPaused(p) { paused = p; }
@@ -916,7 +919,12 @@ function createArenaWorld(riderDefs, modeKey = 'score') {
       emitTrail(r);                                // tail keeps following even mid-air
       if (!dead && !airborne && !immune) for (const rr of riders) {   // can't hit trails mid-air / while shielded
         const skip = (rr === r) ? DM.graceSegs : 0;
-        for (let i = 0; i < rr.trailSegs.length - skip; i++) if (distToSeg(r.x, r.z, rr.trailSegs[i]) < DM.trailW) { dead = true; cause = (rr === r) ? '트레일 충돌' : '상대 트레일'; if (rr !== r) killer = rr.idx; break; }
+        for (let i = 0; i < rr.trailSegs.length - skip; i++) {
+          const sg = rr.trailSegs[i];
+          if (Math.abs((r.y || 0) - (sg.y0 || 0)) < DM.trailH && distToSeg(r.x, r.z, sg) < DM.trailW) {   // pass under floating (mid-jump) trail walls
+            dead = true; cause = (rr === r) ? '트레일 충돌' : '상대 트레일'; if (rr !== r) killer = rr.idx; break;
+          }
+        }
         if (dead) break;
       }
       // ram kill: a shielded/super rider that bodychecks a vulnerable rider kills them
@@ -1124,7 +1132,11 @@ function inputFor(which) {
     const head = gameMode === '2P' ? 0 : (tracker.headYaw || 0); // head-look (single local view)
     const c = tracker.controls(region);
     if (which === 0) lastMotion = c;
-    if (c.present) return { steer: c.steer, wheelie: c.wheelie, head }; // wheelie signed (+up/-down)
+    if (c.present) {   // ease-curve so fine hand moves give fine control (easier to drive)
+      const st = Math.sign(c.steer) * Math.pow(Math.abs(c.steer), CFG.motionSteerCurve) * CFG.motionSteer;
+      const wh = c.wheelie >= 0 ? Math.pow(c.wheelie, CFG.motionWheelieCurve) * CFG.motionWheelie : c.wheelie;
+      return { steer: st, wheelie: wh, head };   // wheelie signed (+up/-down)
+    }
     return { steer: 0, wheelie: -0.5, head };   // no hands -> ease front wheel down (safety)
   }
   return kbPlayer(which);
@@ -1171,6 +1183,7 @@ const els = {
   dmScore: document.getElementById('dmScore'), dmItem: document.getElementById('dmItem'), dmItemIcon: document.getElementById('dmItemIcon'),
   dmTimeLabel: document.getElementById('dmTimeLabel'),
   dmStandings: document.getElementById('dmStandings'), dmStandingsRows: document.getElementById('dmStandingsRows'),
+  dmSpectate: document.getElementById('dmSpectate'),
   dmStandingsHint: document.getElementById('dmStandingsHint'),
   modeTagVal: document.getElementById('modeTagVal'),
   finishBanner: document.getElementById('finishBanner'), finishBig: document.getElementById('finishBig'), finishSub: document.getElementById('finishSub'),
@@ -2046,8 +2059,17 @@ function loop() {
     compositeMat.uniforms.uSpeedR.value = 0;
     compositeMat.uniforms.uFlashL.value.set(1, 1, 1, 0); compositeMat.uniforms.uFlashR.value.set(1, 1, 1, 0);
     const victory = dst.over && dst.winner >= 0;
+    // spectate: eliminated (no lives left) -> follow a living rider instead of staring at your wreck
+    let viewCam = arenaWorld.cameras[mySlot];
+    const eliminated = r0 && !r0.alive && r0.lives <= 0 && !r0.startDead && (r0.respawnT || 0) <= 0;
+    if (eliminated && !victory) {
+      const spec = arenaWorld.riders.find(r => r.alive && !r.startDead && r.idx !== mySlot);
+      if (spec) viewCam = arenaWorld.cameras[spec.idx];
+      els.dmSpectate.textContent = spec ? '💀 관전 중 · P' + (spec.idx + 1) : '💀 탈락';
+      els.dmSpectate.classList.add('on');
+    } else els.dmSpectate.classList.remove('on');
     renderer.setScissorTest(false);
-    renderer.setRenderTarget(rts[0]); renderer.clear(); renderer.render(arenaWorld.scene, victory ? arenaWorld.winCam : arenaWorld.cameras[mySlot]);
+    renderer.setRenderTarget(rts[0]); renderer.clear(); renderer.render(arenaWorld.scene, victory ? arenaWorld.winCam : viewCam);
     if (two) { renderer.setRenderTarget(rts[1]); renderer.clear(); renderer.render(arenaWorld.scene, victory ? arenaWorld.winCam : arenaWorld.cameras[1]); }
     renderer.setRenderTarget(null); renderer.clear(); renderer.render(quadScene, quadCam);
     renderMiniViews();

@@ -76,6 +76,12 @@
       18%  { opacity: 1; transform: translate(-50%, -6px) scale(1.15); }
       100% { opacity: 0; transform: translate(-50%, -64px) scale(1); } }
 
+    /* spectate banner (eliminated in survival/lives) */
+    #dmSpectate { position: absolute; top: 88px; left: 50%; transform: translateX(-50%); display: none; z-index: 18;
+      font-family: var(--font); font-size: 15px; color: #ff9a9a; letter-spacing: .06em;
+      background: rgba(8,12,22,.72); padding: 6px 16px; box-shadow: 0 0 0 3px #06060c; }
+    #dmSpectate.on { display: block; }
+
     .controls-help { position: absolute; bottom: 16px; left: 50%; transform: translateX(-50%);
       font-size: 11px; color: var(--dim); letter-spacing: .02em; text-align: center; }
 
@@ -351,6 +357,7 @@
     <div id="dmItem"><div class="box" id="dmItemIcon">⤴️</div><div class="key">F</div></div>
     <div class="warn" id="dmWarn">! 경계 임박 !</div>
     <div class="banner" id="dmBanner"><div class="big" id="dmBannerBig">GAME OVER</div><div class="sub" id="dmBannerSub"></div></div>
+    <div id="dmSpectate"></div>
     <div id="dmStandings"><div class="title">FINAL STANDINGS</div><div id="dmStandingsRows"></div><div class="hint" id="dmStandingsHint">R 재시작</div></div>
 
     <div class="controls-help" id="helpText">← → 조향　↑ 윌리　R 리셋　1/2 인원　M 모션</div>
