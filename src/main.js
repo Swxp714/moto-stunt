@@ -4,6 +4,7 @@
 //   Phase 3:   local 2-player split-screen (independent worlds, low-res RT composite)
 // SSOT: docs/GAMEPLAN.md
 import * as THREE from 'three';
+import { CFG, STATE, DM, DM_MODES, ITEM_ICON, HERO_COLORS, DM_COLORS } from './config.js';
 import { HandTracker, computeControls } from './hands.js';
 import { makeBayerTexture } from './pixelart.js';
 import { Net } from './net.js';
@@ -48,30 +49,7 @@ function buildVehicleModel(key, bodyColor, riderColor) {
   return inner;
 }
 
-// ---------------------------------------------------------------------------
-// Tuning (mirror of GAMEPLAN §10)
-// ---------------------------------------------------------------------------
-const CFG = {
-  baseSpeed: 60, wheelieSpeedMul: 2.3, steerSpeed: 22, roadWidth: 12,
-  wheelieAccel: 7,   // how fast speed ramps toward the wheelie boost (higher = snappier)
-  rewindSeconds: 2,  // on death, respawn at the position from this many seconds ago
-  kbWheelie: 0.5,    // keyboard wheelie-up strength (1 = full rate; lower = raises slower)
-  speedWarp: 0.55,   // barrel screen-warp strength at top speed
-  maxPitch: 1.0, pitchRiseRate: 2.2, pitchFallRate: 2.5, trackLength: 3000,
-  respawnFreeze: 1.0, invincibleTime: 1.5,
-  pixelSize: 4,            // (legacy fallback) low-res RT downscale factor
-  // responsive pixel grid: target a FIXED dot-row count so the dot look stays consistent
-  // across window sizes (small windows get smaller dots, not fewer dots). ps derived per-resize.
-  targetH: 270,            // target dot-rows for the scene (1080p → ps 4, matches the old look)
-  dotMin: 2, dotMax: 5,    // clamp screen-px per dot (min readable .. max chunky)
-  aspectRef: 1.7778,       // 16:9 — below this, hold horizontal FOV constant (no UI clipping)
-  maxVFov: 75,             // cap GAME-camera vertical FOV so narrow/split aspects don't fisheye
-  // webcam (motion) control feel — gentler + finer near center so small hand moves = small input
-  motionSteer: 0.82, motionSteerCurve: 1.5,
-  motionWheelie: 0.85, motionWheelieCurve: 1.3,
-  colorSteps: 6, dither: 0.65,  // pixel-art grade — softened so bike shapes read clearly
-};
-const STATE = { RIDING: 'riding', CRASHED: 'crashed', FINISHED: 'finished' };
+// Tuning (CFG/STATE/DM/DM_MODES/palettes) now live in config.js — see docs/ARCHITECTURE.md
 
 // ---------------------------------------------------------------------------
 // Renderer
@@ -450,22 +428,6 @@ function createWorld(bodyColor) {
 // TRAIL DEATHMATCH — separate arena world factory (see docs/MODE_DEATHMATCH.md)
 // D0: aerial arena + free-roam bike (heading/speed) + top-down chase camera
 // ---------------------------------------------------------------------------
-const DM = { moveSpeed: 34, turnRate: 2.6, arenaR: 95, startR: 42,
-  trailGap: 1.6, trailW: 1.2, trailH: 2.4, graceSegs: 6, trailMax: 55, // tail length cap (shorter)
-  shrinkRate: 2.4, minR: 16, wheelieMul: 2.4,      // shrink rate; wheelie speed boost (stronger)
-  jumpPadR: 3.8, jumpTime: 0.85, jumpHeight: 7, jumpPads: 7,  // jump ramps
-  // --- shared score/respawn tuning ---
-  matchTime: 300, respawnDelay: 2, invulnTime: 2.2, killScore: 2, minR: 16,
-  itemInterval: 20 };   // rank-based item handed out every N seconds
-// three deathmatch sub-modes
-const DM_MODES = {
-  score:    { name: '점수전 (5분)',   startR: 82, shrink: false, timer: 300, maxLives: 0, // 0 = infinite respawn
-    desc: '5분간 점수 경쟁 · 죽으면 −1 · 킬 +2 · 무한 리스폰 · 넓은 맵' },
-  survival: { name: '서바이벌 (즉사)', startR: 72, shrink: true,  timer: 0,   maxLives: 1,
-    desc: '한 번 죽으면 끝 · 맵이 점점 좁아짐 · 최후의 1인 승리' },
-  lives:    { name: '목숨 3개',        startR: 72, shrink: true,  timer: 0,   maxLives: 3,
-    desc: '목숨 3개 · 맵이 좁아짐 · 다 잃으면 탈락 · 최후의 1인' },
-};
 function createArenaWorld(riderDefs, modeKey = 'score') {
   const mode = DM_MODES[modeKey] || DM_MODES.score;
   const scene = new THREE.Scene();
@@ -1200,7 +1162,6 @@ let winner = null; // for 2P
 function updateModeTag() {
   els.modeTagVal.textContent = `${gameMode} · ${inputSource.toUpperCase()}`;
 }
-const ITEM_ICON = { jump: '⤴️', boost: '💨', shield: '🛡️', super: '🔥' };
 // 3D item models pre-rendered to data-URLs — used as HUD icons + the slot-machine reel.
 // Rendered with the MAIN renderer into an offscreen RT (reliable; a separate
 // WebGL context was flaky at startup) then read back to a 2D canvas.
@@ -1432,7 +1393,6 @@ function closeMenu() { inMenu = false; menuEl.classList.add('hidden'); hud.class
 // pixel canvas (one shader) for a unified dot look ----
 const heroCanvas = document.getElementById('heroCanvas');
 const fadeOverlay = document.getElementById('fadeOverlay');
-const HERO_COLORS = [0xe8842a, 0xe14b4b, 0x4b86e1, 0x49b96a, 0x9b59d0, 0xf2c53d];
 let heroR, heroScene, heroCam, heroKart, heroRAF, heroOn = false, heroPlay, heroExit, heroSettings, heroHover = false, heroHoverBtn = null, heroFly = 0, heroTremble = 0, heroSpk = null;
 // build a text plane from a 2D canvas (pixelated along with everything else)
 function heroText(text, { fs = 110, color = '#ffffff', shadow = null, h = 1 } = {}) {
@@ -1603,7 +1563,6 @@ async function startLocal2() {
   worlds[0].setVehicle(picks[0]); worlds[1].setVehicle(picks[1]);
   setGameMode('2P'); worlds.forEach(w => w.reset());
 }
-const DM_COLORS = [0xff5a3c, 0x3a8bff, 0x49d17a, 0xffd54a, 0xff5ad1, 0x5ad1ff, 0xff9a3a, 0xb06aff];
 let dmModeKey = 'score';   // chosen deathmatch sub-mode (score | survival | lives)
 // mode-select gate: pick a sub-mode, then run the chosen DM kind
 function pickDmMode(kind) {
