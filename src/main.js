@@ -65,6 +65,7 @@ const CFG = {
   targetH: 270,            // target dot-rows for the scene (1080p → ps 4, matches the old look)
   dotMin: 2, dotMax: 5,    // clamp screen-px per dot (min readable .. max chunky)
   aspectRef: 1.7778,       // 16:9 — below this, hold horizontal FOV constant (no UI clipping)
+  maxVFov: 75,             // cap GAME-camera vertical FOV so narrow/split aspects don't fisheye
   colorSteps: 6, dither: 0.65,  // pixel-art grade — softened so bike shapes read clearly
 };
 const STATE = { RIDING: 'riding', CRASHED: 'crashed', FINISHED: 'finished' };
@@ -1020,14 +1021,14 @@ function sizeTargets() {
   rts[0].setSize(grid.lowW, grid.lowH);
   rts[1].setSize(grid.lowW, grid.lowH);
   renderer.setSize(W, H);                 // keep the main backbuffer + canvas matched to the window (Bayer alignment)
-  const aspect = halfW / H, fMain = fovForAspect(62, aspect);
+  const aspect = halfW / H, fMain = Math.min(fovForAspect(62, aspect), CFG.maxVFov);   // cap so split/narrow doesn't fisheye
   worlds[0].camera.fov = fMain; worlds[0].camera.aspect = aspect; worlds[0].camera.updateProjectionMatrix();
   worlds[1].camera.fov = fMain; worlds[1].camera.aspect = aspect; worlds[1].camera.updateProjectionMatrix();
   compositeMat.uniforms.uResolution.value.set(W, H);
   compositeMat.uniforms.uSplit.value = split ? 1 : 0;
   compositeMat.uniforms.uTint.value = split ? 0.4 : 0;
   if (arenaWorld) {
-    const fDm = fovForAspect(60, aspect);
+    const fDm = Math.min(fovForAspect(60, aspect), CFG.maxVFov);
     arenaWorld.cameras.forEach(c => { c.fov = fDm; c.aspect = aspect; c.updateProjectionMatrix(); });
     arenaWorld.winCam.fov = fDm; arenaWorld.winCam.aspect = aspect; arenaWorld.winCam.updateProjectionMatrix();
   }
@@ -1921,7 +1922,7 @@ function renderMiniViews() {
     if (!r.alive) box.o.textContent = (r.lives > 0) ? '리스폰…' : 'OUT';
     if (r.alive) {
       const yGl = H - yTop - bh, cam = arenaWorld.cameras[r.idx];
-      cam.aspect = bw / bh; cam.updateProjectionMatrix();
+      cam.fov = 60; cam.aspect = bw / bh; cam.updateProjectionMatrix();   // fixed mini FOV (not the widened gameplay FOV)
       renderer.setViewport(x, yGl, bw, bh);
       renderer.setScissor(x, yGl, bw, bh); renderer.setScissorTest(true);
       renderer.setRenderTarget(null); renderer.clear();
