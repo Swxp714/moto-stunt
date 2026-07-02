@@ -1229,7 +1229,7 @@ function dmBeginCountdown(cfg) {
   for (let s = 0; s <= maxSlot; s++) {
     const present = slots.includes(s);
     const k = karts[s];
-    defs.push({ color: k && k.color != null ? k.color : DM_COLORS[s % 8], vehicle: k && k.vehicle,
+    defs.push({ color: DM_COLORS[s % 8], vehicle: k && k.vehicle,   // slot-based color -> always distinct per player
       isBot: false, remote: s !== online.mySlot, dead: !present, name: 'P' + (s + 1) });
   }
   arenaWorld = createArenaWorld(defs, cfg.mode || dmModeKey, scorePop);
