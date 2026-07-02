@@ -728,6 +728,17 @@ function showDmStandings(aw, mySlot, winner, showHint) {
   els.dmStandings.classList.add('show');
 }
 function hideDmStandings() { els.dmStandings.classList.remove('show'); }
+// edge warning: out-of-bounds -> 복귀 countdown (누적 그레이스), else 경계 임박 pulse
+function edgeWarn(aw, mySlot, active) {
+  const r0 = aw.riders[mySlot];
+  const out = active && r0 && r0.alive && aw.S.radius != null && Math.hypot(r0.x, r0.z) > aw.S.radius;
+  if (out) {
+    const left = Math.max(0, DM.outLimit - (r0.outTime || 0));
+    els.dmWarn.textContent = `↩ 복귀! ${left.toFixed(1)}초`; els.dmWarn.classList.add('on');
+  } else if (active && aw.S.nearEdge) {
+    els.dmWarn.textContent = '! 경계 임박 !'; els.dmWarn.classList.add('on');
+  } else els.dmWarn.classList.remove('on');
+}
 // --- 레전드 정규전 (Legend Ranked) ---
 async function startLegend(opts = {}) {
   teardownOnline();
@@ -1536,7 +1547,7 @@ function loop() {
     }
 
     updateDmHud(arenaWorld, mySlot);
-    els.dmWarn.classList.toggle('on', !two && !!dst.nearEdge);
+    edgeWarn(arenaWorld, mySlot, !two);
     els.dmBanner.classList.toggle('show', dst.over);
     if (dst.over) {
       const isScore = (DM_MODES[dst.mode] || DM_MODES.score).timer > 0;
@@ -1587,7 +1598,7 @@ function loop() {
     const dst = arenaWorld.S, mySlot = legend.localSlot;
     updateDmHud(arenaWorld, mySlot);
     updateLegendHud();
-    els.dmWarn.classList.toggle('on', legend.phase === 'dm' && !!dst.nearEdge);
+    edgeWarn(arenaWorld, mySlot, legend.phase === 'dm');
     const r0 = arenaWorld.riders[mySlot];
     if (engineOn) sfx.engineSet(r0.alive ? r0.speed / (DM.moveSpeed * 2.4) : 0.18);
     compositeMat.uniforms.uSpeedL.value = Math.min(1, Math.max(0, (r0.speed - DM.moveSpeed) / (DM.moveSpeed * (DM.wheelieMul - 1))));

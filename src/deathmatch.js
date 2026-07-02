@@ -308,7 +308,7 @@ export function createArenaWorld(riderDefs, modeKey = 'score', scorePop = () => 
       r.alive = !r.startDead; r.speed = DM.moveSpeed * r.st.speed; r.trailInit = false; r.bike.visible = !r.startDead;
       r.pitch = 0; r.air = 0; r.y = 0; r.head = 0; r.bike.rotation.x = 0;
       r.score = 0; r.respawnT = 0; r.invuln = 0; r.item = r.aug.startItem; r.boost = 0; r.shield = 0;
-      r.kills = 0; r.deaths = 0; r.rsX = null; r.revived = false; r.elimAt = 0;
+      r.kills = 0; r.deaths = 0; r.rsX = null; r.revived = false; r.elimAt = 0; r.outTime = 0;
       r.lives = mode.maxLives === 0 ? Infinity : mode.maxLives;
       clearRiderTrail(r);
     });
@@ -327,7 +327,7 @@ export function createArenaWorld(riderDefs, modeKey = 'score', scorePop = () => 
     if (r.rsX != null) { r.x = r.rsX; r.z = r.rsZ; r.heading = r.rsH; r.rsX = null; }   // camera already panned here
     else { const s = pickRespawn(r); r.x = s.x; r.z = s.z; r.heading = s.h; }
     r.alive = true; r.bike.visible = true; r.speed = DM.moveSpeed * r.st.speed; r.pitch = 0; r.air = 0; r.y = 0;
-    r.trailInit = false; r.invuln = DM.invulnTime + r.aug.invulnAdd; r.boost = 0; r.shield = 0;
+    r.trailInit = false; r.invuln = DM.invulnTime + r.aug.invulnAdd; r.boost = 0; r.shield = 0; r.outTime = 0;
     if (r.idx === 0) sfx.play('respawn');
   }
   // hand each living rider a rank-based item (leaders weak, trailing strong)
@@ -504,8 +504,8 @@ export function createArenaWorld(riderDefs, modeKey = 'score', scorePop = () => 
 
       const distC = Math.hypot(r.x, r.z);
       if (distC > arena.radius) {
-        if (immune) { r.x *= arena.radius / distC; r.z *= arena.radius / distC; } // shielded -> bounce off the wall
-        else if (!dead) { dead = true; cause = '경계 이탈'; }
+        if (immune) { r.x *= arena.radius / distC; r.z *= arena.radius / distC; }   // shielded -> bounce off the wall
+        else { r.outTime = (r.outTime || 0) + dt; if (r.outTime >= DM.outLimit && !dead) { dead = true; cause = '경계 이탈'; } }  // 누적 그레이스: 밖에 총 3초면 사망 (재입장해도 리셋 X)
       }
       emitTrail(r);                                // tail keeps following even mid-air
       if (!dead && !airborne && !immune) for (const rr of riders) {   // can't hit trails mid-air / while shielded
@@ -537,6 +537,8 @@ export function createArenaWorld(riderDefs, modeKey = 'score', scorePop = () => 
       }
     }
     S.alive = riders[0].alive;
+    S.radius = arena.radius;   // expose for the render's per-rider out-of-bounds warning + countdown
+    S.radius = arena.radius;   // exposed for the HUD to compute the local rider's out-of-bounds grace
     S.nearEdge = riders[0].alive && Math.hypot(riders[0].x, riders[0].z) > arena.radius * 0.82;
 
     for (const r of riders) if (r.alive && r.air <= 0 && r.pitch > CFG.maxPitch * r.st.maxPitch * r.aug.maxPitchMul * 0.22) {   // no sparks while airborne (no ground contact)

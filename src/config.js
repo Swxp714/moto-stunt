@@ -32,7 +32,8 @@ export const DM = { moveSpeed: 34, turnRate: 2.6, arenaR: 135, startR: 58,
   jumpPadR: 3.8, jumpTime: 0.85, jumpHeight: 7, jumpPads: 9,  // jump ramps
   // --- shared score/respawn tuning ---
   matchTime: 300, respawnDelay: 2, invulnTime: 2.2, killScore: 2, minR: 32,
-  itemInterval: 20 };   // rank-based item handed out every N seconds
+  itemInterval: 20,     // rank-based item handed out every N seconds
+  outLimit: 3 };        // 경계 밖 누적 허용 시간(초) — 넘기면 사망 (재입장해도 리셋 안 됨)
 
 // three deathmatch sub-modes  (arenas enlarged — big open maps)
 export const DM_MODES = {
