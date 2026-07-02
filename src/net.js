@@ -5,6 +5,20 @@
 const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const PREFIX = 'motostunt-';
 
+// ICE servers for cross-network (different-WiFi) play. STUN handles most home routers;
+// TURN relays the ~10-20% of strict/symmetric-NAT & mobile networks where STUN alone fails.
+// The openrelay TURN is a free best-effort public relay — for guaranteed reliability,
+// drop your own TURN credentials in here (e.g. a free Metered/Twilio key).
+const ICE = {
+  iceServers: [
+    { urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302', 'stun:stun.cloudflare.com:3478'] },
+    { urls: 'turn:openrelay.metered.ca:80', username: 'openrelayproject', credential: 'openrelayproject' },
+    { urls: 'turn:openrelay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayproject' },
+    { urls: 'turn:openrelay.metered.ca:443?transport=tcp', username: 'openrelayproject', credential: 'openrelayproject' },
+  ],
+};
+const PEER_OPTS = { debug: 0, config: ICE };
+
 function genCode(n = 5) {
   let s = '';
   for (let i = 0; i < n; i++) s += CODE_CHARS[(Math.random() * CODE_CHARS.length) | 0];
@@ -26,7 +40,7 @@ export class Net {
     return new Promise((resolve, reject) => {
       const attempt = (tries) => {
         const code = genCode();
-        const peer = new Peer(PREFIX + code, { debug: 0 });
+        const peer = new Peer(PREFIX + code, PEER_OPTS);
         let opened = false;
         peer.on('open', () => { opened = true; this.peer = peer; this.isHost = true; this.code = code; resolve(code); });
         peer.on('connection', (c) => {
@@ -48,7 +62,7 @@ export class Net {
 
   join(code) {
     return new Promise((resolve, reject) => {
-      const peer = new Peer({ debug: 0 });
+      const peer = new Peer(PEER_OPTS);
       let done = false;
       peer.on('open', () => {
         const c = peer.connect(PREFIX + code.toUpperCase(), { reliable: true });
