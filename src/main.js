@@ -731,11 +731,13 @@ function hideDmStandings() { els.dmStandings.classList.remove('show'); }
 // edge warning: out-of-bounds -> 복귀 countdown (누적 그레이스), else 경계 임박 pulse
 function edgeWarn(aw, mySlot, active) {
   const r0 = aw.riders[mySlot];
-  const out = active && r0 && r0.alive && aw.S.radius != null && Math.hypot(r0.x, r0.z) > aw.S.radius;
-  if (out) {
+  // per-viewer distance (fixes online bug: S.nearEdge was hardcoded to riders[0])
+  const d = (r0 && r0.alive && aw.S.radius != null) ? Math.hypot(r0.x, r0.z) : 0;
+  const inPlay = active && r0 && r0.alive && aw.S.radius != null;
+  if (inPlay && d > aw.S.radius) {
     const left = Math.max(0, DM.outLimit - (r0.outTime || 0));
     els.dmWarn.textContent = `↩ 복귀! ${left.toFixed(1)}초`; els.dmWarn.classList.add('on');
-  } else if (active && aw.S.nearEdge) {
+  } else if (inPlay && d > aw.S.radius * 0.82) {
     els.dmWarn.textContent = '! 경계 임박 !'; els.dmWarn.classList.add('on');
   } else els.dmWarn.classList.remove('on');
 }
