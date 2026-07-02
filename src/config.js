@@ -58,6 +58,8 @@ export const LEGEND = {
 // shipping 6p point curves; legendTable() generates for any N (sum of 5 DM-1sts ≈ race-1st ≈ 500)
 export const DM_PTS   = [100, 72, 50, 33, 20, 10];
 export const RACE_PTS = [500, 330, 220, 140, 80, 30];
+// final race (결승 직선) — length, item-zone positions (fractions of length), force-finish cap
+export const FINAL_TRACK = { length: 3600, itemZoneFracs: [0.25, 0.5, 0.75], timeCap: 90 };
 export function legendTable(n, kind) {
   const fixed = kind === 'race' ? RACE_PTS : DM_PTS;
   if (n <= fixed.length) return fixed.slice(0, n);

@@ -5,7 +5,8 @@
 //   are injected into each round's rider defs (def.aug) — deathmatch.js stays decoupled.
 // Exposed at window.__legend.
 import { createArenaWorld } from './deathmatch.js';
-import { LEGEND, DM_COLORS, legendTable } from './config.js';
+import { createRaceArena } from './race.js';
+import { LEGEND, DM_COLORS, legendTable, FINAL_TRACK } from './config.js';
 import { resolveMods, offerAugments, botPickAugment } from '../models/augments.js';
 import { VEHICLES } from '../models/vehicles.js';
 
@@ -26,8 +27,8 @@ export function createLegendMatch({ humanVehicle = 'dirtbike', humanColor = 0xff
   const players = defs.map((d, i) => ({ idx: i, name: d.name, pts: 0, placeHist: [], dmFirsts: 0, augments: [] }));
 
   const M = {
-    phase: 'augment', round: 0, totalRounds: LEGEND.dmRounds + 1,   // 5 DM + 1 placeholder final = 6
-    world: null, localSlot: 0, players, defs, active: true,
+    phase: 'augment', round: 0, totalRounds: LEGEND.dmRounds + 1,   // 5 DM rounds + 1 final RACE = 6
+    world: null, race: null, localSlot: 0, players, defs, active: true,
     roundClock: 0, interClock: 0, ending: null, banner: '', lastOffer: [],
   };
 
@@ -42,9 +43,15 @@ export function createLegendMatch({ humanVehicle = 'dirtbike', humanColor = 0xff
     }).map(r => r.idx);
   }
   function buildRound() {
-    disposeWorld(M.world);
-    M.world = createArenaWorld(M.defs, LEGEND.dmModeKey, scorePop);
-    M.roundClock = 0; M.ending = null; M.phase = 'dm';
+    disposeWorld(M.world); disposeWorld(M.race); M.world = null; M.race = null;
+    if (M.round >= M.totalRounds - 1) {   // final round = the RACE (결승 직선)
+      M.race = createRaceArena(M.defs, { trackLength: FINAL_TRACK.length, timeCap: FINAL_TRACK.timeCap, scorePop });
+      M.phase = 'race';
+    } else {
+      M.world = createArenaWorld(M.defs, LEGEND.dmModeKey, scorePop);
+      M.phase = 'dm';
+    }
+    M.roundClock = 0; M.ending = null;
   }
   // resolve every rider's owned augments into def.aug, then build the round
   function applyPicks(humanPickedId) {
@@ -58,7 +65,7 @@ export function createLegendMatch({ humanVehicle = 'dirtbike', humanColor = 0xff
   async function runAugmentPhase() {
     M.phase = 'augment';
     const me = players[M.localSlot];
-    const opts = offerAugments(me.augments, 3);
+    const opts = offerAugments(me.augments, 3, Math.random, M.defs[M.localSlot].vehicle);   // human sees their own bike's exclusive too
     M.lastOffer = opts;
     let picked = opts.length ? opts[0].id : null;   // headless / fallback default
     if (openAugment) { try { picked = await openAugment(M.round + 1, opts, M.defs[M.localSlot].vehicle); } catch (e) { /* keep default */ } }
@@ -67,7 +74,8 @@ export function createLegendMatch({ humanVehicle = 'dirtbike', humanColor = 0xff
   function resolveRound() {
     const isFinal = M.round >= M.totalRounds - 1;
     const table = legendTable(M.defs.length, isFinal ? 'race' : 'dm');
-    placement(M.world).forEach((ridx, place) => {
+    const order = isFinal ? M.race.S.finishOrder.slice() : placement(M.world);
+    order.forEach((ridx, place) => {
       const p = players.find(pp => pp.idx === ridx);
       p.pts += table[place] != null ? table[place] : table[table.length - 1];
       p.placeHist.push(place);
@@ -89,6 +97,10 @@ export function createLegendMatch({ humanVehicle = 'dirtbike', humanColor = 0xff
       M.roundClock += dt;
       if (M.ending == null && (M.world.S.over || M.roundClock > LEGEND.dmRoundTime)) M.ending = 1.6;  // let the round-over banner breathe
       if (M.ending != null) { M.ending -= dt; if (M.ending <= 0) resolveRound(); }
+    } else if (M.phase === 'race' && M.race) {
+      M.race.update(dt, inputs && inputs[0]);   // 결승 레이스: local racer driven by input[0]
+      if (M.ending == null && M.race.S.over) M.ending = 2.4;   // let the finish + winCam breathe
+      if (M.ending != null) { M.ending -= dt; if (M.ending <= 0) resolveRound(); }
     } else if (M.phase === 'intermission') {
       if (M.world) M.world.update(dt, inputs);   // victory cam keeps orbiting
       M.interClock -= dt;
@@ -96,7 +108,7 @@ export function createLegendMatch({ humanVehicle = 'dirtbike', humanColor = 0xff
     }
     // 'augment' / 'results' phases: idle (UI overlay drives the augment pick)
   };
-  M.dispose = () => { disposeWorld(M.world); M.world = null; M.active = false; };
+  M.dispose = () => { disposeWorld(M.world); disposeWorld(M.race); M.world = null; M.race = null; M.active = false; };
 
   return M;
 }

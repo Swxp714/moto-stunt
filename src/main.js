@@ -4,7 +4,7 @@
 //   Phase 3:   local 2-player split-screen (independent worlds, low-res RT composite)
 // SSOT: docs/GAMEPLAN.md
 import * as THREE from 'three';
-import { CFG, STATE, DM, DM_MODES, ITEM_ICON, HERO_COLORS, DM_COLORS, LEGEND } from './config.js';
+import { CFG, STATE, DM, DM_MODES, ITEM_ICON, HERO_COLORS, DM_COLORS, LEGEND, FINAL_TRACK } from './config.js';
 import { HandTracker, computeControls } from './hands.js';
 import { makeBayerTexture } from './pixelart.js';
 import { Net } from './net.js';
@@ -525,7 +525,7 @@ const tracker = new HandTracker();
 window.__moto = { CFG, STATE, worlds, get mode() { return gameMode; },
   get source() { return inputSource; }, tracker, computeControls,
   composite: compositeMat, get arena() { return arenaWorld; }, DM, createArenaWorld,
-  startLegend: (o) => startLegend(o), get legend() { return legend; }, createLegendMatch };
+  startLegend: (o) => startLegend(o), get legend() { return legend; }, createLegendMatch, renderer };
 Object.defineProperty(window, '__legend', { get() { return legend; } });
 
 const keys = new Set();
@@ -775,6 +775,13 @@ function updateLegendHud() {
     els.lrBar.classList.add('on');
     const augs = legend.myAugments().map(id => AUG_MAP[id] ? AUG_MAP[id].icon : '').join('');
     els.lrBar.innerHTML = `라운드 <b>${Math.min(legend.round + 1, legend.totalRounds)}</b>/${legend.totalRounds} · 점수 <b>${me ? me.pts : 0}</b> · 순위 <b>#${legend.myRank()}</b>${augs ? ` · ${augs}` : ''}`;
+    hideDmStandings();
+  } else if (legend.phase === 'race' && legend.race) {
+    els.lrBar.classList.add('on');
+    const rc = legend.race, r0 = rc.racers[rc.localSlot];
+    const pos = rc.S.over ? (rc.S.finishOrder.indexOf(r0.idx) + 1) : (rc.racers.filter(r => r.dist > r0.dist).length + 1);
+    const prog = Math.min(100, r0.dist / FINAL_TRACK.length * 100) | 0;
+    els.lrBar.innerHTML = `🏁 결승 레이스 · <b>${pos}위</b>/${rc.racers.length} · ${prog}%`;
     hideDmStandings();
   } else if (legend.phase === 'intermission' || legend.phase === 'results') {
     els.lrBar.classList.add('on'); els.lrBar.textContent = legend.banner;
@@ -1593,7 +1600,24 @@ function loop() {
   if (gameMode === 'LEGEND' && legend) {
     legend.tick(dt, [inputFor(0)]);
     // AUGMENT phase (or before round 0 builds): the 3-card overlay is up — nothing to render behind it
-    if (legend.phase === 'augment' || !legend.world) { updateLegendHud(); requestAnimationFrame(loop); return; }
+    if (legend.phase === 'augment' || (!legend.world && !legend.race)) { updateLegendHud(); requestAnimationFrame(loop); return; }
+    // FINAL RACE render (결승 직선) — race world has its own scene/cameras
+    if (legend.phase === 'race' && legend.race) {
+      const rc = legend.race, rr = rc.racers[rc.localSlot];
+      updateLegendHud();
+      if (engineOn) sfx.engineSet((rr.speed || 0) / 35);
+      compositeMat.uniforms.uSpeedL.value = Math.min(1, Math.max(0, (rr.speed - CFG.baseSpeed) / (CFG.baseSpeed * (CFG.wheelieSpeedMul - 1))));
+      compositeMat.uniforms.uSpeedR.value = 0;
+      compositeMat.uniforms.uFlashL.value.set(1, 1, 1, 0); compositeMat.uniforms.uFlashR.value.set(1, 1, 1, 0);
+      const cam = rc.S.over ? rc.winCam : rc.cameras[rc.localSlot];
+      const a = innerWidth / innerHeight; cam.fov = Math.min(fovForAspect(62, a), CFG.maxVFov); cam.aspect = a; cam.updateProjectionMatrix();
+      els.dmWarn.classList.remove('on'); els.dmSpectate.classList.remove('on');
+      renderer.setScissorTest(false);
+      renderer.setRenderTarget(rts[0]); renderer.clear(); renderer.render(rc.scene, cam);
+      renderer.setRenderTarget(null); renderer.clear(); renderer.render(quadScene, quadCam);
+      drawCamOverlay();
+      requestAnimationFrame(loop); return;
+    }
     arenaWorld = legend.world;                        // the live round world (tick may have rebuilt it)
     const dst = arenaWorld.S, mySlot = legend.localSlot;
     updateDmHud(arenaWorld, mySlot);
